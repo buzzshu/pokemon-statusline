@@ -270,6 +270,18 @@ $Themes = @{
     'dark'    = @{ outer='38;5;240'; outerTitle='38;5;247';   frame='38;5;60';  label='38;5;245'; desc='Low-contrast dark mode' }
 }
 
+# --- Item catalog ---
+# slug -> {name_zh, cost, glyph, desc, use}
+#   use = 'buddy-exp' (rare-candy)   immediate +10 exp to team[0]
+#       = 'catch-boost' (great-ball) auto-consumed in Catch-Encounter, +50% rate
+# Bag lives at state.items as @{ slug: count }. Empty by default; first /gacha buy
+# materializes the key. Pricing intent: 1 day of active CC cost (~5-15 coin) buys
+# roughly half a rare-candy, so candies feel earned but not unattainable.
+$Items = [ordered]@{
+    'rare-candy' = @{ name_zh='稀有糖果'; cost=25; glyph='♥'; color='38;5;213'; desc='+10 exp 給 buddy (team[0])';  use='buddy-exp' }
+    'great-ball' = @{ name_zh='高級球';   cost=15; glyph='◎'; color='38;5;39';  desc='下次 /gacha catch 抓取機率 ×1.5 (自動消耗)'; use='catch-boost' }
+}
+
 # --- Achievement definitions (21 milestones) ---
 # Each entry: slug (unique key in state.achievements), name_zh (display), desc (hint),
 # kind (group for display ordering).
@@ -541,6 +553,8 @@ function Load-State {
     # team[0] is source of truth for buddy. Re-sync on every load so any
     # drift (e.g., statusline tick that missed team[0], legacy state) auto-heals.
     if ($state.team -and $state.team.Count -gt 0) { Sync-Buddy-From-Team $state }
+    # Batch 5: items bag. Lazy-init to empty; missing keys default to 0 on read.
+    if (-not $state.Contains('items') -or $null -eq $state.items) { $state.items = [ordered]@{} }
     return $state
 }
 
@@ -728,12 +742,20 @@ function Catch-Encounter($state) {
     }
     $state.coins = [int]$state.coins - 1
     $rate = Get-CatchRate $id $rarity
+    # Auto-consume one Great Ball if any in bag: 1.5x rate for this attempt only.
+    $usedGreatBall = $false
+    if ((Get-ItemCount $state 'great-ball') -gt 0) {
+        Remove-BagItem $state 'great-ball' 1 | Out-Null
+        $rate = [Math]::Min(1.0, $rate * 1.5)
+        $usedGreatBall = $true
+    }
     $roll = (Get-Random -Maximum 10000) / 10000.0
     $caught = ($roll -lt $rate)
     $glyph = Color $TypeColor[$poke.type1] "$($TypeGlyph[$poke.type1])"
     $name = Color '38;5;255' $poke.name_zh
     Print ''
-    Print "  $(Dim '>> POKE BALL THROWN <<')"
+    $ballTag = if ($usedGreatBall) { Color '1;38;5;39' '>> GREAT BALL THROWN <<' } else { Dim '>> POKE BALL THROWN <<' }
+    Print "  $ballTag"
     Start-Sleep -Milliseconds 400
     Print "  $(Dim '...shake...')"
     Start-Sleep -Milliseconds 350
@@ -1521,6 +1543,132 @@ function Set-Theme($state, [string]$name) {
     Print ''
 }
 
+function Get-ItemCount($state, [string]$slug) {
+    if (-not $state.items -or -not $state.items.Contains($slug)) { return 0 }
+    return [int]$state.items[$slug]
+}
+function Add-BagItem($state, [string]$slug, [int]$n = 1) {
+    if (-not $state.items) { $state.items = [ordered]@{} }
+    $cur = Get-ItemCount $state $slug
+    $state.items[$slug] = $cur + $n
+}
+function Remove-BagItem($state, [string]$slug, [int]$n = 1) {
+    $cur = Get-ItemCount $state $slug
+    if ($cur -lt $n) { return $false }
+    $new = $cur - $n
+    if ($new -eq 0) { $state.items.Remove($slug) | Out-Null } else { $state.items[$slug] = $new }
+    return $true
+}
+
+function Show-Shop($state) {
+    Print ''
+    Print (Bold '=== Shop ===')
+    Print ''
+    Print "  $(Dim 'Coins:') $(Color '1;38;5;220' "$([int]$state.coins)")"
+    Print ''
+    foreach ($slug in $Items.Keys) {
+        $it = $Items[$slug]
+        $g = Color $it.color "$($it.glyph)"
+        $name = Color '1;38;5;255' $it.name_zh
+        $costTag = Color '1;38;5;220' "$($it.cost) coin"
+        $slugTag = Dim "($slug)"
+        Print "  $g $name $slugTag"
+        Print "    $costTag  $(Dim $it.desc)"
+        Print ''
+    }
+    Print "  $(Dim '/gacha buy <slug> [N]   ·   /gacha items 看現有道具')"
+    Print ''
+}
+
+function Show-Items($state) {
+    Print ''
+    Print (Bold '=== Bag (items) ===')
+    Print ''
+    if (-not $state.items -or $state.items.Count -eq 0) {
+        Print "  $(Dim '(empty) — /gacha shop 看買什麼')"
+        Print ''
+        return
+    }
+    foreach ($slug in $state.items.Keys) {
+        $cnt = [int]$state.items[$slug]
+        if ($cnt -le 0) { continue }
+        $it = $Items[$slug]
+        if ($it) {
+            $g = Color $it.color "$($it.glyph)"
+            Print "  $g $(Color '1;38;5;255' $it.name_zh)  $(Color '1;38;5;220' "× $cnt")  $(Dim $it.desc)"
+        } else {
+            # Unknown slug (e.g. items added by future version) — render minimal
+            Print "  $(Dim "$slug")  $(Color '1;38;5;220' "× $cnt")"
+        }
+    }
+    Print ''
+    Print "  $(Dim '/gacha use <slug>   ·   /gacha shop 補貨')"
+    Print ''
+}
+
+function Buy-Item($state, [string]$slug, [int]$n) {
+    if ($n -lt 1) { $n = 1 }
+    $s = $slug.ToLower()
+    if (-not $Items.Contains($s)) {
+        Print (Color '38;5;196' "Unknown item: $slug. Available: $(($Items.Keys) -join ', ')")
+        return
+    }
+    $it = $Items[$s]
+    $total = [int]$it.cost * $n
+    if ([int]$state.coins -lt $total) {
+        Print (Color '38;5;196' "Need $total coin ($($it.cost) × $n); have $([int]$state.coins).")
+        return
+    }
+    $state.coins = [int]$state.coins - $total
+    Add-BagItem $state $s $n
+    $g = Color $it.color "$($it.glyph)"
+    Print ''
+    Print "  $g $(Color '1;38;5;255' "$($it.name_zh) × $n") 入手  $(Dim "(-$total coin, $(Get-ItemCount $state $s) total)")"
+    Print "  $(Dim "Coins: $([int]$state.coins)")"
+    Print ''
+}
+
+function Use-Item($state, [string]$slug) {
+    $s = $slug.ToLower()
+    if (-not $Items.Contains($s)) {
+        Print (Color '38;5;196' "Unknown item: $slug")
+        return
+    }
+    if ((Get-ItemCount $state $s) -lt 1) {
+        Print (Color '38;5;196' "You don't have any $($Items[$s].name_zh).  /gacha shop 去買")
+        return
+    }
+    $it = $Items[$s]
+    switch ($it.use) {
+        'buddy-exp' {
+            if (-not $state.team -or $state.team.Count -eq 0) {
+                Print (Color '38;5;196' 'No buddy set; use /gacha buddy <id> first.')
+                return
+            }
+            Remove-BagItem $state $s 1 | Out-Null
+            $oldExp = [int]$state.team[0].exp
+            $oldLvl = Get-Level $oldExp
+            $state.team[0].exp = $oldExp + 10
+            $newLvl = Get-Level $state.team[0].exp
+            Sync-Buddy-From-Team $state
+            $g = Color $it.color "$($it.glyph)"
+            $bp = $Dex[[string]([int]$state.team[0].id)]
+            $bg = Color $TypeColor[$bp.type1] "$($TypeGlyph[$bp.type1])"
+            Print ''
+            $lvlDelta = if ($newLvl -gt $oldLvl) { ' ' + (Color '1;38;5;82' "(LV. $oldLvl → $newLvl !)") } else { '' }
+            Print "  $g 使用 $(Color '1;38;5;255' $it.name_zh) — $bg #$('{0:D3}' -f $bp.id) $(Color '1;38;5;255' $bp.name_zh) +10 exp$lvlDelta"
+            Print "  $(Dim "exp $oldExp → $($state.team[0].exp)  ·  剩 $(Get-ItemCount $state $s) 顆")"
+            Print ''
+        }
+        'catch-boost' {
+            Print "  $(Dim '高級球會在下次 /gacha catch 時自動使用，不用手動 use。')"
+            Print ''
+        }
+        default {
+            Print (Color '38;5;196' "Item $($it.name_zh) 沒有對應的 use 動作")
+        }
+    }
+}
 function Show-Badges($state) {
     $beaten = @{}
     if ($state.gyms_beaten) {
@@ -1990,6 +2138,10 @@ function Show-Help {
     Print "  /gacha gym N         challenge gym N (1-8); team fights at buddy LV, leader has fixed LV"
     Print "  /gacha badges        show your earned gym badges (visual collection)"
     Print "  /gacha theme [name]  switch statusline palette (gba / crystal / dark); no arg = list"
+    Print "  /gacha shop          list buyable items + their cost"
+    Print "  /gacha buy <slug>    buy item (e.g. rare-candy = +10 exp; great-ball = catch boost)"
+    Print "  /gacha items         show your item inventory"
+    Print "  /gacha use <slug>    consume item (rare-candy bumps buddy exp; great-ball auto-uses in catch)"
     Print "  /gacha achievements  show all 21 milestone achievements + earned dates"
     Print "  /gacha event         show today's themed pull bonus (rotates by weekday)"
     Print "  /gacha dex           Pokedex grid (every species ever caught)"
@@ -2086,6 +2238,20 @@ try {
         } else {
             Set-Theme $state $Arg
         }
+    }
+    'shop'    { Show-Shop $state }
+    'items'   { Show-Items $state }
+    'buy'     {
+        if ([string]::IsNullOrWhiteSpace($Arg)) { Print "Usage: buy <item-slug> [N]"; Show-Shop $state; break }
+        $n = 1
+        if (-not [string]::IsNullOrWhiteSpace($Arg2)) {
+            if (-not [int]::TryParse($Arg2, [ref]$n)) { Print "Usage: buy <item-slug> [N]"; break }
+        }
+        Buy-Item $state $Arg $n
+    }
+    'use'     {
+        if ([string]::IsNullOrWhiteSpace($Arg)) { Print "Usage: use <item-slug>"; Show-Items $state; break }
+        Use-Item $state $Arg
     }
     'gym'     {
         if ([string]::IsNullOrWhiteSpace($Arg)) { Show-Gyms $state; break }
