@@ -640,6 +640,10 @@ function Load-State {
     }
     # Batch 2 schema additions
     if (-not $state.Contains('gyms_beaten') -or $null -eq $state.gyms_beaten) { $state.gyms_beaten = @() }
+    # PS 5.1 ConvertTo-Json collapses single-element arrays to scalars on save, so
+    # we may load gyms_beaten back as an int. Re-wrap so `+=` does array push, not
+    # integer addition (which would destroy badge #1 the moment gym 2 is beaten).
+    if ($state.gyms_beaten -isnot [array]) { $state.gyms_beaten = @($state.gyms_beaten) }
     # Batch 3 schema additions
     if (-not $state.Contains('achievements') -or $null -eq $state.achievements) { $state.achievements = [ordered]@{} }
     if (-not $state.Contains('battle_streak_current')) { $state.battle_streak_current = 0 }
@@ -680,6 +684,7 @@ function Load-State {
     if (-not $state.Contains('daily_streak'))  { $state.daily_streak = 0 }
     # Elite Four / Champion progress (batch 7)
     if (-not $state.Contains('elite_beaten') -or $null -eq $state.elite_beaten) { $state.elite_beaten = @() }
+    if ($state.elite_beaten -isnot [array]) { $state.elite_beaten = @($state.elite_beaten) }
     # Stats counters added in batch 6 (achievements expansion). Lazy-add missing keys.
     if (-not $state.stats.Contains('items_bought'))      { $state.stats.items_bought = 0 }
     if (-not $state.stats.Contains('stones_used'))       { $state.stats.stones_used = 0 }
