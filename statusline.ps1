@@ -109,6 +109,16 @@ if ($gachaState) {
             $fresh.sessions_count = [int]$fresh.sessions_count + 1
             if ($fresh.buddy -and $fresh.buddy.id) {
                 $fresh.buddy.exp = [int]$fresh.buddy.exp + 1
+                # Mirror the tick into team[0].exp — Sync-Buddy-From-Team in gacha.ps1
+                # treats team[0] as source of truth and would otherwise wipe this on
+                # next /gacha command. Skip if legacy schema (team[0] is bare int);
+                # gacha.ps1 migration will pick up buddy.exp into team[0] next run.
+                if ($fresh.team -and $fresh.team.Count -gt 0) {
+                    $t0 = $fresh.team[0]
+                    if ($t0 -is [pscustomobject] -and $t0.PSObject.Properties.Name -contains 'exp') {
+                        $t0.exp = [int]$t0.exp + 1
+                    }
+                }
             }
             # Wild encounter roll: 1% per new session. Only if no encounter pending.
             # Pyramid pool C 60 / U 25 / R 12 / HR 3 — HR (legendaries) ONLY appear here.
@@ -273,9 +283,15 @@ function Lookup-Poke($dex, [int]$id) {
 }
 
 # --- Resolve team for sprite area (1 leader + up to 2 companions = 3 visible). Rest go to TEAM-overflow text. ---
+# Team rows are now objects @{id, exp, shiny} (post-migration). Pull .id for
+# sprite/name lookups; per-slot exp isn't used here — leader EXP bar reads
+# gachaState.buddy.exp, which Sync-Buddy keeps mirrored to team[0].
 $teamAll = @()
 if ($gachaState -and $gachaState.team) {
-    foreach ($x in $gachaState.team) { $teamAll += [int]$x }
+    foreach ($x in $gachaState.team) {
+        $xid = if ($null -ne $x.id) { [int]$x.id } else { [int]$x }   # tolerate legacy int rows
+        $teamAll += $xid
+    }
 } elseif ($gachaState -and $gachaState.buddy -and $gachaState.buddy.id) {
     $teamAll = @([int]$gachaState.buddy.id)
 }

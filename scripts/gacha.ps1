@@ -319,7 +319,7 @@ function Check-TripleClone($state) {
     if (-not $state.team) { return $false }
     $counts = @{}
     foreach ($t in $state.team) {
-        $k = [string][int]$t
+        $k = [string][int]$t.id
         if ($counts.ContainsKey($k)) { $counts[$k] = $counts[$k] + 1 } else { $counts[$k] = 1 }
     }
     foreach ($k in $counts.Keys) { if ($counts[$k] -ge 3) { return $true } }
@@ -513,7 +513,58 @@ function Load-State {
     if (-not $state.Contains('achievements') -or $null -eq $state.achievements) { $state.achievements = [ordered]@{} }
     if (-not $state.Contains('battle_streak_current')) { $state.battle_streak_current = 0 }
     if (-not $state.Contains('battle_streak_best')) { $state.battle_streak_best = 0 }
+    # Batch 4 (per-slot exp): team rows used to be ints, now @{id,exp,shiny}.
+    # Migrate any legacy int / id-only-hashtable rows; team[0] inherits buddy.exp
+    # if its id matches the legacy buddy, else starts at 0.
+    if ($state.team -and $state.team.Count -gt 0) {
+        $needsMigration = $false
+        foreach ($t in $state.team) {
+            if ($t -is [int] -or $t -is [long] -or $t -is [double]) { $needsMigration = $true; break }
+            if ($t -is [hashtable] -or $t -is [System.Collections.Specialized.OrderedDictionary]) {
+                if (-not $t.Contains('exp')) { $needsMigration = $true; break }
+            } else { $needsMigration = $true; break }
+        }
+        if ($needsMigration) {
+            $oldBuddyId = if ($state.buddy -and $null -ne $state.buddy.id) { [int]$state.buddy.id } else { 0 }
+            $oldBuddyExp = if ($state.buddy -and $null -ne $state.buddy.exp) { [int]$state.buddy.exp } else { 0 }
+            $migrated = @()
+            for ($i = 0; $i -lt $state.team.Count; $i++) {
+                $row = $state.team[$i]
+                $rid = if ($row -is [hashtable] -or $row -is [System.Collections.Specialized.OrderedDictionary]) { [int]$row.id } else { [int]$row }
+                $rshiny = (Get-OwnedShinyCount $state $rid) -gt 0
+                $rexp = if ($i -eq 0 -and $rid -eq $oldBuddyId) { $oldBuddyExp } else { 0 }
+                $migrated += , ([ordered]@{ id = $rid; exp = $rexp; shiny = $rshiny })
+            }
+            $state.team = $migrated
+        }
+    }
+    # team[0] is source of truth for buddy. Re-sync on every load so any
+    # drift (e.g., statusline tick that missed team[0], legacy state) auto-heals.
+    if ($state.team -and $state.team.Count -gt 0) { Sync-Buddy-From-Team $state }
     return $state
+}
+
+# Rebuild state.buddy as a view of team[0]. Keep the existing buddy.* shape so
+# statusline.ps1 and Show-Trainer continue reading buddy.id / .exp / .shiny /
+# .evolves_to / .evolve_level without per-call lookups.
+function Sync-Buddy-From-Team($state) {
+    if (-not $state.team -or $state.team.Count -eq 0) { $state.buddy = $null; return }
+    $slot = $state.team[0]
+    if (-not $slot -or $null -eq $slot.id) { return }
+    $id = [int]$slot.id
+    if (-not $Dex.ContainsKey([string]$id)) { return }
+    $poke = $Dex[[string]$id]
+    $state.buddy = [ordered]@{
+        id           = $id
+        shiny        = [bool]$slot.shiny
+        exp          = [int]$slot.exp
+        nickname     = $null
+        name_zh      = $poke.name_zh
+        type1        = $poke.type1
+        stage        = [int]$poke.stage
+        evolves_to   = $poke.evolves_to
+        evolve_level = $poke.evolve_level
+    }
 }
 
 function Save-State($state) {
@@ -889,38 +940,34 @@ function Set-Buddy($state, [int]$id) {
     }
     $shiny = (Get-OwnedShinyCount $state $id) -gt 0
     $poke = $Dex[[string]$id]
-
-    # Sync team: place id at team[0] (leader). Keep existing members, max 6.
     if (-not $state.team) { $state.team = @() }
-    $newTeam = @([int]$id)
-    foreach ($x in $state.team) {
-        if ([int]$x -ne [int]$id -and $newTeam.Count -lt 6) { $newTeam += [int]$x }
-    }
-    $state.team = $newTeam
 
-    if ($null -eq $state.buddy -or [int]$state.buddy.id -ne $id) {
-        $state.buddy = [ordered]@{
-            id           = $id
-            shiny        = $shiny
-            exp          = 0
-            nickname     = $null
-            name_zh      = $poke.name_zh
-            type1        = $poke.type1
-            stage        = [int]$poke.stage
-            evolves_to   = $poke.evolves_to
-            evolve_level = $poke.evolve_level
-        }
-        $poke = $Dex[[string]$id]
-        $glyph = Color $TypeColor[$poke.type1] "$($TypeGlyph[$poke.type1])"
-        $name = if ($shiny) { Gold $poke.name_zh } else { Color '38;5;255' $poke.name_zh }
-        $shinyTag = if ($shiny) { Gold ' (shiny)' } else { '' }
-        Print ''
-        Print "  Buddy set: $glyph #$('{0:D3}' -f $id) $name$shinyTag"
-        Print ''
-    } else {
-        $state.buddy.shiny = $shiny
-        Print "  Already your buddy."
+    # If id already in team, promote that slot (preserves its exp). Otherwise
+    # create a fresh slot with exp=0. Either way the chosen slot becomes team[0].
+    $existing = $null
+    $rest = @()
+    foreach ($s in $state.team) {
+        if ($null -eq $existing -and [int]$s.id -eq $id) { $existing = $s }
+        else { $rest += , $s }
     }
+    $leader = if ($existing) { $existing } else { [ordered]@{ id=$id; exp=0; shiny=$shiny } }
+    $leader.shiny = $shiny   # keep shiny state fresh in case it changed since slot created
+    $newTeam = @($leader)
+    foreach ($s in $rest) { if ($newTeam.Count -lt 6) { $newTeam += , $s } }
+    $state.team = $newTeam
+    Sync-Buddy-From-Team $state
+
+    $glyph = Color $TypeColor[$poke.type1] "$($TypeGlyph[$poke.type1])"
+    $name = if ($shiny) { Gold $poke.name_zh } else { Color '38;5;255' $poke.name_zh }
+    $shinyTag = if ($shiny) { Gold ' (shiny)' } else { '' }
+    Print ''
+    if ($existing) {
+        $kept = Get-Level ([int]$leader.exp)
+        Print "  Buddy switched: $glyph #$('{0:D3}' -f $id) $name$shinyTag $(Dim "(kept LV. $kept, exp $([int]$leader.exp))")"
+    } else {
+        Print "  Buddy set: $glyph #$('{0:D3}' -f $id) $name$shinyTag $(Dim '(fresh slot, exp 0)')"
+    }
+    Print ''
 }
 
 function Add-Team($state, [int]$id) {
@@ -929,23 +976,26 @@ function Add-Team($state, [int]$id) {
     if ($owned -lt 1) { Print (Color '38;5;196' "You don't own $($Dex[[string]$id].name_zh) (#$id)."); return }
     if (-not $state.team) { $state.team = @() }
     # Allow duplicates in team up to how many copies you actually own.
-    $inTeam = @($state.team | Where-Object { [int]$_ -eq [int]$id }).Count
+    $inTeam = @($state.team | Where-Object { [int]$_.id -eq [int]$id }).Count
     if ($inTeam -ge $owned) {
         Print (Color '38;5;196' "You only own $owned x $($Dex[[string]$id].name_zh) (#$id) and all are already in your team.")
         return
     }
     if ($state.team.Count -ge 6) { Print (Color '38;5;196' "Team is full (6/6). Remove someone first: /gacha team remove <id>"); return }
-    $state.team += [int]$id
-    $newCount = @($state.team | Where-Object { [int]$_ -eq [int]$id }).Count
+    $shiny = (Get-OwnedShinyCount $state $id) -gt 0
+    $state.team += , ([ordered]@{ id=$id; exp=0; shiny=$shiny })
+    Sync-Buddy-From-Team $state
+    $newCount = @($state.team | Where-Object { [int]$_.id -eq [int]$id }).Count
     $copyTag = if ($newCount -gt 1) { " (copy $newCount of $owned)" } else { '' }
     Print ''
-    Print "  Added $($Dex[[string]$id].name_zh) (#$id)$copyTag to team. Slot $([int]$state.team.Count)/6."
+    Print "  Added $($Dex[[string]$id].name_zh) (#$id)$copyTag to team. Slot $([int]$state.team.Count)/6. $(Dim '(fresh slot, exp 0)')"
     Print ''
 }
 
 function Move-Team($state, [int]$id, [int]$newPos1) {
     if (-not $state.team -or $state.team.Count -eq 0) { Print (Color '38;5;196' "Team is empty."); return }
-    if (-not ($state.team -contains [int]$id)) { Print (Color '38;5;196' "Pokemon #$id not in team."); return }
+    $teamIds = @($state.team | ForEach-Object { [int]$_.id })
+    if (-not ($teamIds -contains [int]$id)) { Print (Color '38;5;196' "Pokemon #$id not in team."); return }
     $newIdx = $newPos1 - 1
     if ($newIdx -lt 0 -or $newIdx -ge $state.team.Count) {
         Print (Color '38;5;196' "Position $newPos1 out of range (1..$($state.team.Count)).")
@@ -955,17 +1005,21 @@ function Move-Team($state, [int]$id, [int]$newPos1) {
         Print (Color '38;5;196' "Position 1 is the LEADER slot. Use /gacha buddy $id to switch leader.")
         return
     }
+    # Pull out the FIRST matching slot (preserves which copy moves under dupes A/B/C).
     $without = @()
-    foreach ($t in $state.team) {
-        if ([int]$t -ne [int]$id) { $without += [int]$t }
+    $picked = $null
+    foreach ($s in $state.team) {
+        if ($null -eq $picked -and [int]$s.id -eq [int]$id) { $picked = $s }
+        else { $without += , $s }
     }
     $reordered = @()
     for ($i = 0; $i -lt $without.Count; $i++) {
-        if ($i -eq $newIdx) { $reordered += [int]$id }
-        $reordered += [int]$without[$i]
+        if ($i -eq $newIdx) { $reordered += , $picked }
+        $reordered += , $without[$i]
     }
-    if ($newIdx -ge $without.Count) { $reordered += [int]$id }
+    if ($newIdx -ge $without.Count) { $reordered += , $picked }
     $state.team = $reordered
+    Sync-Buddy-From-Team $state
     Print ''
     Print "  Moved $($Dex[[string]$id].name_zh) (#$id) to position $newPos1."
     Print ''
@@ -973,7 +1027,8 @@ function Move-Team($state, [int]$id, [int]$newPos1) {
 
 function Remove-Team($state, [int]$id) {
     if (-not $state.team -or $state.team.Count -eq 0) { Print (Color '38;5;196' "Team is empty."); return }
-    if (-not ($state.team -contains [int]$id)) { Print (Color '38;5;196' "Pokemon #$id not in team."); return }
+    $teamIds = @($state.team | ForEach-Object { [int]$_.id })
+    if (-not ($teamIds -contains [int]$id)) { Print (Color '38;5;196' "Pokemon #$id not in team."); return }
     if ($state.team.Count -eq 1) {
         Print (Color '38;5;196' "Can't remove the only team member. Set a different buddy first.")
         return
@@ -981,22 +1036,25 @@ function Remove-Team($state, [int]$id) {
     # If multiple copies, remove the LAST occurrence (preserves leader at index 0).
     $occurrences = @()
     for ($i = 0; $i -lt $state.team.Count; $i++) {
-        if ([int]$state.team[$i] -eq [int]$id) { $occurrences += $i }
+        if ([int]$state.team[$i].id -eq [int]$id) { $occurrences += $i }
     }
     $removeAt = $occurrences[-1]
     if ($removeAt -eq 0 -and $state.team.Count -gt 1) {
         Print (Color '38;5;196' "Can't remove the LEADER while team has others. Switch leader first: /gacha buddy <other-id>")
         return
     }
+    $droppedExp = [int]$state.team[$removeAt].exp
     $newArr = @()
     for ($i = 0; $i -lt $state.team.Count; $i++) {
-        if ($i -ne $removeAt) { $newArr += [int]$state.team[$i] }
+        if ($i -ne $removeAt) { $newArr += , $state.team[$i] }
     }
     $state.team = $newArr
-    $remaining = @($state.team | Where-Object { [int]$_ -eq [int]$id }).Count
+    Sync-Buddy-From-Team $state
+    $remaining = @($state.team | Where-Object { [int]$_.id -eq [int]$id }).Count
     $remTag = if ($remaining -gt 0) { " ($remaining copy(s) still in team)" } else { '' }
+    $expTag = if ($droppedExp -gt 0) { " $(Dim "(lost $droppedExp exp on that slot)")" } else { '' }
     Print ''
-    Print "  Removed $($Dex[[string]$id].name_zh) (#$id) from team. Slot $([int]$state.team.Count)/6.$remTag"
+    Print "  Removed $($Dex[[string]$id].name_zh) (#$id) from team. Slot $([int]$state.team.Count)/6.$remTag$expTag"
     Print ''
 }
 
@@ -1085,19 +1143,21 @@ function Show-Team($state) {
     # Pre-pass: count occurrences per dex_id so duplicates get A/B/C... labels.
     $dupTotals = @{}
     foreach ($t in $state.team) {
-        $k = [string]$t
+        $k = [string][int]$t.id
         if ($dupTotals.ContainsKey($k)) { $dupTotals[$k] = $dupTotals[$k] + 1 } else { $dupTotals[$k] = 1 }
     }
     $dupSeen = @{}
     for ($i = 0; $i -lt $state.team.Count; $i++) {
-        $id = [int]$state.team[$i]
+        $slot = $state.team[$i]
+        $id = [int]$slot.id
         if (-not $Dex.ContainsKey([string]$id)) { continue }
         $p = $Dex[[string]$id]
         $glyph = Color $TypeColor[$p.type1] "$($TypeGlyph[$p.type1])"
-        $shiny = (Get-OwnedShinyCount $state $id) -gt 0
+        $shiny = [bool]$slot.shiny
         $name = if ($shiny) { Gold $p.name_zh } else { Color '38;5;255' $p.name_zh }
         $tag = if ($i -eq 0) { Color '1;38;5;226' '[LEADER]' } else { Dim "  team    " }
-        $lvlTag = if ($i -eq 0 -and $state.buddy) { "LV. $(Get-Level ([int]$state.buddy.exp))" } else { '' }
+        $slotLvl = Get-Level ([int]$slot.exp)
+        $lvlTag = "$(Color '1;38;5;82' "LV. $slotLvl") $(Dim "(exp $([int]$slot.exp))")"
         # Duplicate label A/B/C/... assigned in team-order when same dex_id has >1 copy in team.
         $k = [string]$id
         $copyLabel = ''
@@ -1370,16 +1430,18 @@ function Resolve-Battle($teamA, $teamB, [string]$nameA, [string]$nameB) {
 }
 
 function Build-User-Team($state) {
-    # User's combatants from $state.team, all sharing buddy.level
-    $buddyLvl = if ($state.buddy -and $state.buddy.exp -ne $null) { Get-Level ([int]$state.buddy.exp) } else { 1 }
+    # Each slot fights at its own level (per-slot exp). Build-Combatant order
+    # matches state.team order so Challenge-Gym can map combatant.hp_cur back
+    # to the right slot when awarding exp.
     $arr = @()
-    foreach ($t in $state.team) {
-        $id = [int]$t
+    foreach ($slot in $state.team) {
+        $id = [int]$slot.id
         if (-not $Dex.ContainsKey([string]$id)) { continue }
-        $isShiny = (Get-OwnedShinyCount $state $id) -gt 0
-        $arr += , (Build-Combatant $id $buddyLvl $isShiny)
+        $lvl = Get-Level ([int]$slot.exp)
+        if ($lvl -lt 1) { $lvl = 1 }
+        $arr += , (Build-Combatant $id $lvl ([bool]$slot.shiny))
     }
-    if ($arr.Count -eq 0) { return ,$arr }   # empty
+    if ($arr.Count -eq 0) { return ,$arr }
     return , $arr
 }
 
@@ -1498,10 +1560,21 @@ function Challenge-Gym($state, [int]$gymIdx) {
     if ($result -eq 'A') {
         Print (Color '1;38;5;82' "★ 勝利！你打贏 $($gym.leader_name)，獲得 $($gym.badge)！")
         $coinReward = $gym.level * 2
-        $expReward = $gym.level
+        $leadExp = $gym.level
+        $sideExp = [int][Math]::Floor($gym.level / 4)
         $state.coins = [int]$state.coins + $coinReward
-        if ($state.buddy -and $state.buddy.id) {
-            $state.buddy.exp = [int]$state.buddy.exp + $expReward
+        # Team[0] (buddy) gets full reward; other slots get the side-exp ONLY
+        # if they survived (hp_cur > 0 in the userTeam combatant we built).
+        $sideAwarded = 0
+        if ($state.team -and $state.team.Count -gt 0) {
+            $state.team[0].exp = [int]$state.team[0].exp + $leadExp
+            for ($i = 1; $i -lt [Math]::Min($state.team.Count, $userTeam.Count); $i++) {
+                if ([int]$userTeam[$i].hp_cur -gt 0) {
+                    $state.team[$i].exp = [int]$state.team[$i].exp + $sideExp
+                    $sideAwarded++
+                }
+            }
+            Sync-Buddy-From-Team $state
         }
         if (-not $state.gyms_beaten) { $state.gyms_beaten = @() }
         if (-not ($state.gyms_beaten -contains $gymIdx)) {
@@ -1512,7 +1585,8 @@ function Challenge-Gym($state, [int]$gymIdx) {
             $state.battle_streak_best = [int]$state.battle_streak_current
         }
         Print ""
-        Print (Dim "  獎勵：+$coinReward coins (LV. * 2)  ·  +$expReward exp to buddy  ·  streak $($state.battle_streak_current) (best $($state.battle_streak_best))")
+        $sideTag = if ($sideAwarded -gt 0) { "  +$sideExp exp × $sideAwarded 倖存隊員" } else { '' }
+        Print (Dim "  獎勵：+$coinReward coins (LV. * 2)  ·  +$leadExp exp to buddy$sideTag  ·  streak $($state.battle_streak_current) (best $($state.battle_streak_best))")
         Print (Dim "  進度：$($state.gyms_beaten.Count)/8 道館攻略")
     } elseif ($result -eq 'B') {
         Print (Color '1;38;5;196' "✕ 戰敗。隊伍全滅，下次再來。")
@@ -1562,16 +1636,17 @@ function Show-Trainer($state) {
         $buddyLine = "$bg #$('{0:D3}' -f $bp.id) $bn LV. $blv"
     }
 
-    # Team showcase line
+    # Team showcase line: glyph + id + per-slot LV
     $teamLine = '(empty)'
     if ($state.team -and $state.team.Count -gt 0) {
         $glyphs = @()
         foreach ($t in $state.team) {
-            $tid = [int]$t
+            $tid = [int]$t.id
             $tp = $Dex[[string]$tid]
             if (-not $tp) { continue }
             $tg = Color $TypeColor[$tp.type1] "$($TypeGlyph[$tp.type1])"
-            $glyphs += "$tg$(Color '38;5;245' "#$('{0:D3}' -f $tid)")"
+            $tlv = Get-Level ([int]$t.exp)
+            $glyphs += "$tg$(Color '38;5;245' "#$('{0:D3}' -f $tid)")$(Dim "L$tlv")"
         }
         $teamLine = $glyphs -join ' '
     }
@@ -1639,50 +1714,59 @@ function Evolve-Pokemon($state, [int]$id) {
     if ((Get-OwnedCount $state $id) -lt 1) {
         Print (Color '38;5;196' "You don't own $($poke.name_zh) (#$id)."); return
     }
-    # Level tracked only for active buddy; require this pokemon to be the buddy
-    if (-not $state.buddy -or [int]$state.buddy.id -ne $id) {
-        Print (Color '38;5;196' "Only the active buddy can evolve. Set $($poke.name_zh) as buddy first: /gacha buddy $id")
+    # Per-slot evolve: find the team slot for $id with the HIGHEST exp. If $id
+    # isn't currently in team, user has to /gacha buddy or /gacha team add first
+    # (we don't grow exp on dex-only owned copies).
+    $bestIdx = -1
+    $bestExp = -1
+    if ($state.team) {
+        for ($i = 0; $i -lt $state.team.Count; $i++) {
+            if ([int]$state.team[$i].id -eq $id -and [int]$state.team[$i].exp -gt $bestExp) {
+                $bestExp = [int]$state.team[$i].exp
+                $bestIdx = $i
+            }
+        }
+    }
+    if ($bestIdx -lt 0) {
+        Print (Color '38;5;196' "$($poke.name_zh) (#$id) 不在隊伍裡 (only team members earn exp). 先 /gacha team add $id 或 /gacha buddy $id.")
         return
     }
-    # Level gate: canonical Gen 1 evolve_level. lvl follows triangular curve (Get-Level).
+    $slot = $state.team[$bestIdx]
+    $slotLabel = if ($state.team.Count -gt 1) { " [slot $($bestIdx + 1)]" } else { '' }
+
     if ($null -ne $poke.evolve_level) {
-        $curLvl = Get-Level ([int]$state.buddy.exp)
+        $curLvl = Get-Level ([int]$slot.exp)
         if ($curLvl -lt [int]$poke.evolve_level) {
             $needed = Get-ExpForLevel ([int]$poke.evolve_level)
-            $haveExp = [int]$state.buddy.exp
-            Print (Color '38;5;196' "$($poke.name_zh) evolves at LV. $([int]$poke.evolve_level) (currently LV. $curLvl, $haveExp/$needed exp). Keep using me as buddy.")
+            Print (Color '38;5;196' "$($poke.name_zh)$slotLabel evolves at LV. $([int]$poke.evolve_level) (currently LV. $curLvl, $([int]$slot.exp)/$needed exp). Keep training.")
             return
         }
     }
-    # Cost = evolve_level (Bulbasaur L16 -> 16 coin). Fallback to old 5/20 if level missing.
     $cost = if ($null -ne $poke.evolve_level) { [int]$poke.evolve_level } else { if ($poke.stage -eq 0) { 5 } else { 20 } }
     if ([int]$state.coins -lt $cost) {
         Print (Color '38;5;196' "Need $cost coins; have $([int]$state.coins)."); return
     }
-    $hadShiny = (Get-OwnedShinyCount $state $id) -gt 0
+    $hadShiny = [bool]$slot.shiny
     Remove-Owned $state $id 1 | Out-Null
-    if ($hadShiny) { $state.owned[$key].shiny_count = [int]$state.owned[$key].shiny_count - 1 }
+    if ($hadShiny -and $state.owned.Contains($key) -and [int]$state.owned[$key].shiny_count -gt 0) {
+        $state.owned[$key].shiny_count = [int]$state.owned[$key].shiny_count - 1
+    }
     Add-Owned $state ([int]$poke.evolves_to) $hadShiny
     $state.coins = [int]$state.coins - $cost
     $state.stats.evolutions_done = [int]$state.stats.evolutions_done + 1
 
-    $next = $Dex[[string]$poke.evolves_to]
+    # Slot follows forward in-place: id becomes the evolved form, exp preserved.
+    $state.team[$bestIdx].id = [int]$poke.evolves_to
+    $state.team[$bestIdx].shiny = $hadShiny
+    if ($bestIdx -eq 0) { Sync-Buddy-From-Team $state }
 
-    # If buddy was the evolved pokemon, follow it forward (preserve exp)
-    if ($state.buddy -and [int]$state.buddy.id -eq $id) {
-        $state.buddy.id           = [int]$poke.evolves_to
-        $state.buddy.shiny        = $hadShiny
-        $state.buddy.name_zh      = $next.name_zh
-        $state.buddy.type1        = $next.type1
-        $state.buddy.stage        = [int]$next.stage
-        $state.buddy.evolves_to   = $next.evolves_to
-        $state.buddy.evolve_level = $next.evolve_level
-    }
+    $next = $Dex[[string]$poke.evolves_to]
     $g1 = Color $TypeColor[$poke.type1] "$($TypeGlyph[$poke.type1])"
     $g2 = Color $TypeColor[$next.type1] "$($TypeGlyph[$next.type1])"
     $shinyTag = if ($hadShiny) { Gold ' *shiny preserved*' } else { '' }
+    $expTag = "$(Dim "(slot $($bestIdx + 1), kept exp $([int]$slot.exp) → LV. $(Get-Level [int]$slot.exp))")"
     Print ''
-    Print "  $g1 $($poke.name_zh) (#$id) $ARROW $g2 $($next.name_zh) (#$($next.id))  -$cost coin$shinyTag"
+    Print "  $g1 $($poke.name_zh) (#$id) $ARROW $g2 $($next.name_zh) (#$($next.id))  -$cost coin$shinyTag  $expTag"
     Print (Dim "  Coins remaining: $([int]$state.coins)")
     Print ''
 }
@@ -1815,7 +1899,7 @@ function Show-Bag($state) {
 
     # Which dex ids are currently in team (for the *team marker)
     $teamSet = @{}
-    if ($state.team) { foreach ($t in $state.team) { $teamSet[[int]$t] = $true } }
+    if ($state.team) { foreach ($t in $state.team) { $teamSet[[int]$t.id] = $true } }
 
     Print ''
     Print (Bold "=== Bag ($totalSpecies species $DOT $totalCopies cards $DOT $totalShinies shiny) ===")
