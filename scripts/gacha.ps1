@@ -70,7 +70,10 @@ $RarityColor = @{ 'C' = '38;5;245'; 'U' = '38;5;82'; 'R' = '38;5;220'; 'HR' = '3
 # of dedicated buddying, L25+ is real commitment.
 function Get-Level([int]$exp) {
     if ($exp -lt 0) { return 1 }
-    return [int][Math]::Floor([Math]::Sqrt(2.0 * $exp)) + 1
+    # Exact inverse of L*(L-1)/2 = exp. The naive floor(sqrt(2*exp))+1 overshoots
+    # by 1 in the middle of a level band (correct only at exact thresholds), which
+    # caused statusline progress to render as "exp - exp_for_level(L) = -N/L".
+    return [int][Math]::Floor((1 + [Math]::Sqrt(1 + 8.0 * $exp)) / 2)
 }
 function Get-ExpForLevel([int]$lvl) {
     if ($lvl -le 1) { return 0 }

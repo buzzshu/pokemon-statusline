@@ -77,7 +77,7 @@ The Gen 1 type chart at `gacha.ps1:170-186` is canonical-intent (no Steel/Dark/F
 
 ### EXP / level curve
 
-Triangular: `level = floor(sqrt(2 * exp)) + 1`, `exp_for_level(L) = L*(L-1)/2`. Both scripts duplicate `Get-Level` / `Get-ExpForLevel` (`gacha.ps1:71-78`, `statusline.ps1:221-228`). Buddy earns `+1 exp` per new session, attributed in the status-line's new-session branch.
+Triangular: `exp_for_level(L) = L*(L-1)/2`; inverse is `level = floor((1 + sqrt(1 + 8*exp)) / 2)`. Both scripts duplicate `Get-Level` / `Get-ExpForLevel` (`gacha.ps1:71-78`, `statusline.ps1:221-228`). Buddy earns `+1 exp` per new session, attributed in the status-line's new-session branch. (Earlier `floor(sqrt(2*exp)) + 1` overshot by one in the middle of a level band and rendered negative within-level progress — fixed to the exact inverse.)
 
 ### Rate-limit / context-window stdin schema
 

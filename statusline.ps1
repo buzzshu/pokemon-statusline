@@ -306,10 +306,13 @@ function Get-VisibleWidth([string]$s) {
 }
 
 # --- Level formula: triangular EXP curve (mirrors gacha.ps1) ---
-# level = floor(sqrt(2*exp)) + 1. thresh(L) = L*(L-1)/2 exp to reach L.
+# thresh(L) = L*(L-1)/2 exp to reach L. Get-Level returns the largest L with
+# thresh(L) <= exp. The exact inverse is floor((1+sqrt(1+8*exp))/2); the older
+# floor(sqrt(2*exp))+1 was only correct at the level boundary and rendered
+# negative within-level progress in the middle.
 function Get-Level([int]$exp) {
     if ($exp -lt 0) { return 1 }
-    return [int][Math]::Floor([Math]::Sqrt(2.0 * $exp)) + 1
+    return [int][Math]::Floor((1 + [Math]::Sqrt(1 + 8.0 * $exp)) / 2)
 }
 function Get-ExpForLevel([int]$lvl) {
     if ($lvl -le 1) { return 0 }
