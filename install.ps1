@@ -36,7 +36,8 @@ $layout = @(
     @{ rel = 'pokemon-dex.json' },
     @{ rel = 'pokemon-stats.json' },
     @{ rel = 'scripts\gacha.ps1' },
-    @{ rel = 'commands\gacha.md' }
+    @{ rel = 'commands\gacha.md' },
+    @{ rel = 'skills\gacha\SKILL.md' }
 )
 foreach ($e in $layout) {
     $s = Join-Path $src $e.rel
