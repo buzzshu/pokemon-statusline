@@ -263,6 +263,13 @@ $BadgeGlyphs = @{
 }
 $BadgeEmptyGlyph = [char]0x00B7   # · placeholder for unearned slots
 
+# --- Statusline themes (3 palettes). state.theme picks; statusline.ps1 holds a duplicate. ---
+$Themes = @{
+    'gba'     = @{ outer='38;5;220'; outerTitle='1;38;5;226'; frame='38;5;111'; label='38;5;220'; desc='Game Boy Advance gold cartridge (預設)' }
+    'crystal' = @{ outer='38;5;251'; outerTitle='1;38;5;255'; frame='38;5;87';  label='38;5;87';  desc='Gen 2 Crystal silver + cyan' }
+    'dark'    = @{ outer='38;5;240'; outerTitle='38;5;247';   frame='38;5;60';  label='38;5;245'; desc='Low-contrast dark mode' }
+}
+
 # --- Achievement definitions (21 milestones) ---
 # Each entry: slug (unique key in state.achievements), name_zh (display), desc (hint),
 # kind (group for display ordering).
@@ -1399,6 +1406,36 @@ function Show-Gyms($state) {
     Print ''
 }
 
+function Show-Theme($state) {
+    $cur = if ($state.theme -and $Themes.ContainsKey([string]$state.theme)) { [string]$state.theme } else { 'gba' }
+    Print ''
+    Print (Bold '=== Statusline Theme ===')
+    Print ''
+    foreach ($k in @('gba','crystal','dark')) {
+        $t = $Themes[$k]
+        $marker = if ($k -eq $cur) { Color '1;38;5;82' '* ' } else { '  ' }
+        $swatch = "$(Color $t.outer '████') $(Color $t.frame '╔══╗')"
+        Print "  $marker$(Color '1;38;5;255' $k.PadRight(10)) $swatch  $(Dim $t.desc)"
+    }
+    Print ''
+    Print "  $(Dim '/gacha theme <name> 切換 (gba / crystal / dark)')"
+    Print ''
+}
+
+function Set-Theme($state, [string]$name) {
+    $n = $name.ToLower()
+    if (-not $Themes.ContainsKey($n)) {
+        Print (Color '38;5;196' "Unknown theme: $name. Available: gba / crystal / dark")
+        return
+    }
+    $state.theme = $n
+    $t = $Themes[$n]
+    Print ''
+    Print "  $(Color '1;38;5;82' '✓') 主題已切換成 $(Color $t.outer $n) — $(Dim $t.desc)"
+    Print "  $(Dim '開新 Claude Code session 即可看到生效。')"
+    Print ''
+}
+
 function Show-Badges($state) {
     $beaten = @{}
     if ($state.gyms_beaten) {
@@ -1826,6 +1863,7 @@ function Show-Help {
     Print "  /gacha gyms          show all 8 Gen 1 gym leaders + your beat progress"
     Print "  /gacha gym N         challenge gym N (1-8); team fights at buddy LV, leader has fixed LV"
     Print "  /gacha badges        show your earned gym badges (visual collection)"
+    Print "  /gacha theme [name]  switch statusline palette (gba / crystal / dark); no arg = list"
     Print "  /gacha achievements  show all 21 milestone achievements + earned dates"
     Print "  /gacha event         show today's themed pull bonus (rotates by weekday)"
     Print "  /gacha dex           Pokedex grid (every species ever caught)"
@@ -1904,6 +1942,13 @@ switch ($Cmd.ToLower()) {
     'gyms'    { Show-Gyms $state }
     'badges'  { Show-Badges $state }
     'badge'   { Show-Badges $state }
+    'theme'   {
+        if ([string]::IsNullOrWhiteSpace($Arg) -or $Arg -eq 'list' -or $Arg -eq 'show') {
+            Show-Theme $state
+        } else {
+            Set-Theme $state $Arg
+        }
+    }
     'gym'     {
         if ([string]::IsNullOrWhiteSpace($Arg)) { Show-Gyms $state; break }
         $g = 0

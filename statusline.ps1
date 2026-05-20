@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 # Claude Code status line: Pokemon buddy theme.
 # Sprite block LEFT, GBA-style STATUS box RIGHT.
 # HP = 7-day subscription quota remaining  (from $ctx.rate_limits.weekly.used_percentage)
@@ -22,6 +22,7 @@ $ESC = [char]27
 $RESET_EOL = "$ESC[0m$ESC[K"
 function Color([string]$code, [string]$text) { "$ESC[${code}m$text$ESC[0m" }
 function Gold([string]$text) { "$ESC[1;38;5;220m$text$ESC[0m" }
+function Dim([string]$text) { "$ESC[2m$text$ESC[0m" }
 
 # --- Read context JSON from stdin ---
 # Verified Claude Code 2.1.144 stdin schema (see notes in repo):
@@ -182,6 +183,15 @@ $BadgeGlyphs = @{
     8 = @{ glyph=[char]0x25CF; color='38;5;76'  }
 }
 $BadgeEmptyGlyph = [char]0x00B7
+
+# --- Theme palette (mirrors gacha.ps1 $Themes). state.theme selects which row applies. ---
+# Falls back to 'gba' if missing or unknown. Used to override $outerCol / $outerTitleCol /
+# $frameCol / $labelCol below.
+$Themes = @{
+    'gba'     = @{ outer='38;5;220'; outerTitle='1;38;5;226'; frame='38;5;111'; label='38;5;220' }
+    'crystal' = @{ outer='38;5;251'; outerTitle='1;38;5;255'; frame='38;5;87';  label='38;5;87'  }
+    'dark'    = @{ outer='38;5;240'; outerTitle='38;5;247';   frame='38;5;60';  label='38;5;245' }
+}
 
 # --- Mini progress-bar helper ---
 function Bar([int]$pct, [int]$cells, [string]$colorFull, [string]$colorEmpty = '38;5;238') {
@@ -421,6 +431,17 @@ if ($gachaState) {
         $nTag = if ([bool]$lp.shiny) { Gold ([string]$lp.name_zh) } else { Color '38;5;255' ([string]$lp.name_zh) }
         $parts += "$(Color '38;5;245' 'LAST') $rTag $nTag"
     }
+    # STREAK row: only when current >= 2, so the 0/1 case doesn't add a row of noise.
+    # Sparkle count clamps at 5 cells so the box width doesn't blow up on a long streak.
+    $bsCur = [int]$gachaState.battle_streak_current
+    if ($bsCur -ge 2) {
+        $bsBest = [int]$gachaState.battle_streak_best
+        $sparkCh = [char]0x2726
+        $sparkCount = [Math]::Min($bsCur, 5)
+        $sparks = ([string]$sparkCh) * $sparkCount
+        $sparkCol = if ($bsCur -ge 3) { '1;38;5;220' } else { '38;5;208' }
+        $parts += "$(Color '38;5;141' 'STR') $(Color $sparkCol $sparks) $(Color '38;5;245' "$bsCur (best $bsBest)")"
+    }
 }
 
 # TEAM overflow (companions beyond visible sprites)
@@ -550,8 +571,11 @@ $T_LB = [string][char]0x255A
 $T_RB = [string][char]0x255D
 $T_HZ = [string][char]0x2550   # horizontal double line
 $T_VT = [string][char]0x2551   # vertical double line
-$frameCol = '38;5;111'
-$labelCol = '38;5;220'
+$themeName = if ($gachaState -and $gachaState.theme) { [string]$gachaState.theme } else { 'gba' }
+if (-not $Themes.ContainsKey($themeName)) { $themeName = 'gba' }
+$T = $Themes[$themeName]
+$frameCol = $T.frame
+$labelCol = $T.label
 
 $contentW = 0
 foreach ($p in $parts) {
@@ -639,8 +663,8 @@ for ($i = 0; $i -lt $innerH; $i++) {
 # --- Outer GBA-cartridge frame: gold double-line border + "POKEMON" title bar, H+V padding ---
 $H_PAD = 4   # spaces inside frame on left & right of inner content
 $V_PAD = 1   # blank rows above & below inner content inside frame
-$outerCol = '38;5;220'   # GBA cartridge gold
-$outerTitleCol = '1;38;5;226'
+$outerCol = $T.outer
+$outerTitleCol = $T.outerTitle
 $outerInnerW = $innerContentW + 2 * $H_PAD
 $outerTitle = ' POKEMON '
 $oLeftFill = 3
@@ -668,8 +692,27 @@ if ($gachaState -and $gachaState.encounter -and $gachaState.encounter.id -and [i
     }
 }
 
+# --- Daily theme banner (above outer frame): rotates by weekday, mirrors $DailyThemes in gacha.ps1 ---
+$DailyThemes = @{
+    'Monday'    = @{ name='蟲蟲星期一'; type='bug';      glyph=[char]0x2723 }
+    'Tuesday'   = @{ name='火紅星期二'; type='fire';     glyph=[char]0x2726 }
+    'Wednesday' = @{ name='水流星期三'; type='water';    glyph=[char]0x25C8 }
+    'Thursday'  = @{ name='雷光星期四'; type='electric'; glyph=[char]0x26A1 }
+    'Friday'    = @{ name='綠葉星期五'; type='grass';    glyph=[char]0x2740 }
+    'Saturday'  = @{ name='超能星期六'; type='psychic';  glyph=[char]0x2736 }
+    'Sunday'    = @{ name='神龍星期日'; type='dragon';   glyph=[char]0x272F }
+}
+$themeBanner = $null
+$dowKey = (Get-Date).DayOfWeek.ToString()
+if ($DailyThemes.ContainsKey($dowKey)) {
+    $dt = $DailyThemes[$dowKey]
+    $dtCol = if ($tCol.ContainsKey($dt.type)) { $tCol[$dt.type] } else { '38;5;220' }
+    $themeBanner = "  $(Color '38;5;220' 'EVENT') $(Color $dtCol "$($dt.glyph)") $(Color '1;38;5;220' $dt.name) $(Dim '— 30% pull 重抽到') $(Color $dtCol $dt.type.ToUpper())"
+}
+
 # --- Output ---
-if ($encBanner) { "$RESET_EOL$encBanner$RESET_EOL" }
+if ($themeBanner) { "$RESET_EOL$themeBanner$RESET_EOL" }
+if ($encBanner)   { "$RESET_EOL$encBanner$RESET_EOL" }
 "$RESET_EOL$oTop$RESET_EOL"
 for ($v = 0; $v -lt $V_PAD; $v++) { "$RESET_EOL$oBlank$RESET_EOL" }
 foreach ($row in $innerRows) {
