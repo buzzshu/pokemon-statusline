@@ -34,10 +34,10 @@ Spawn the engine in a new Windows Terminal tab so the user sees the full output 
    $pre = (Get-Content $stateFile -Raw -Encoding UTF8 | ConvertFrom-Json).stats.pulls_total
    ```
 
-2. Spawn the new tab in a **named window** `gacha` so every animation lands in the same wt window — first call creates a window named `gacha`, subsequent calls add tabs to it instead of spawning fresh windows. Without `-w gacha`, repeated `/gacha pull` etc. each opened a brand-new wt window:
+2. Spawn the new tab in the **current/focused** wt window via `-w 0 nt`. This puts the new tab right next to wherever the user is reading Claude Code (almost always the wt window CC itself is in), so they don't have to switch windows. A named-window experiment (`-w gacha`) created a separate window the user had to alt-tab to — explicitly rejected:
 
    ```powershell
-   $wtArgs = @('-w', 'gacha', 'nt', '-d', "$env:USERPROFILE", 'powershell', '-NoProfile', '-NoExit', '-ExecutionPolicy', 'Bypass', '-File', "$env:USERPROFILE\.claude\scripts\gacha.ps1") + ($ARGUMENTS -split ' ')
+   $wtArgs = @('-w', '0', 'nt', '-d', "$env:USERPROFILE", 'powershell', '-NoProfile', '-NoExit', '-ExecutionPolicy', 'Bypass', '-File', "$env:USERPROFILE\.claude\scripts\gacha.ps1") + ($ARGUMENTS -split ' ')
    Start-Process wt.exe -ArgumentList $wtArgs
    ```
 
