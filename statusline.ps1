@@ -71,6 +71,17 @@ if (Test-Path $gachaStateFile) {
     } catch {}
 }
 
+# Load $dex EARLY (originally was loaded ~line 309 after the dirty block, which
+# meant the encounter-spawn code at line ~169 inside the dirty block saw $dex=$null
+# and never populated $pool. The legacy `foreach ($p in $dex)` bug masked this
+# because the empty iteration silently failed too; fixing the loop only exposed
+# this deeper ordering issue).
+$dex = $null
+$dexFile = Join-Path $ClaudeDir 'pokemon-dex.json'
+if (Test-Path $dexFile) {
+    try { $dex = Get-Content $dexFile -Raw -Encoding UTF8 | ConvertFrom-Json } catch {}
+}
+
 if ($gachaState) {
     # Compute the deltas this render owns; we DON'T mutate $gachaState in-place
     # then serialize the whole object back — that races with concurrent gacha.ps1
@@ -305,12 +316,7 @@ function Get-ExpForLevel([int]$lvl) {
     return [int]($lvl * ($lvl - 1) / 2)
 }
 
-# --- Load dex once (sprite name row + EVO lookup) ---
-$dex = $null
-$dexFile = Join-Path $ClaudeDir 'pokemon-dex.json'
-if (Test-Path $dexFile) {
-    try { $dex = Get-Content $dexFile -Raw -Encoding UTF8 | ConvertFrom-Json } catch {}
-}
+# --- Dex lookup helper (dex loaded earlier at top, before the dirty block) ---
 function Lookup-Poke($dex, [int]$id) {
     if (-not $dex) { return $null }
     foreach ($p in $dex.pokemon) {
