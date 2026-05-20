@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>Pokemon Status Line + Gacha · Claude Code 寶可夢</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/black.css">
+<style>
+  :root {
+    --gold: #ffd86b;
+    --frame-blue: #87aaff;
+    --pixel-green: #82ff82;
+    --pixel-red: #ff6b6b;
+    --pixel-orange: #ffaa33;
+    --shiny: #ffd86b;
+    --dim: #888;
+  }
+  .reveal { font-family: -apple-system, "Noto Sans TC", "Microsoft JhengHei", sans-serif; }
+  .reveal h1, .reveal h2, .reveal h3 { color: var(--gold); text-transform: none; letter-spacing: 0.01em; }
+  .reveal h1 { font-size: 1.9em; }
+  .reveal h2 { font-size: 1.5em; }
+  .reveal h3 { font-size: 1.15em; color: var(--frame-blue); margin-top: 0.6em; }
+  .reveal p, .reveal li { font-size: 0.85em; line-height: 1.5; }
+  .reveal .subtitle { color: var(--dim); font-size: 0.7em; margin-top: -0.5em; }
+  .reveal pre {
+    box-shadow: none; background: #0c0c0c; border: 1px solid #2a2a2a;
+    border-radius: 4px; padding: 0.8em 1em; margin: 0.6em auto;
+    width: 92%; font-size: 0.4em; line-height: 1.25;
+  }
+  .reveal pre code {
+    font-family: "Cascadia Code", "Consolas", "Menlo", "Courier New", monospace;
+    color: #cfcfcf;
+  }
+  .gold     { color: var(--gold); }
+  .blue     { color: var(--frame-blue); }
+  .green    { color: var(--pixel-green); }
+  .red      { color: var(--pixel-red); }
+  .orange   { color: var(--pixel-orange); }
+  .shiny    { color: var(--shiny); font-weight: bold; }
+  .dim      { color: var(--dim); }
+  .cmd      { color: var(--gold); font-weight: bold; }
+  .feature-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1em; margin-top: 1em; }
+  .feature-card {
+    background: #141414; border: 1px solid #2a2a2a; border-radius: 6px;
+    padding: 0.8em; text-align: left;
+  }
+  .feature-card h4 { color: var(--gold); margin: 0 0 0.4em; font-size: 0.9em; }
+  .feature-card p  { font-size: 0.7em; color: #aaa; margin: 0; line-height: 1.4; }
+  table { font-size: 0.7em; border-collapse: collapse; margin: 0.5em auto; }
+  td, th { padding: 0.3em 0.8em; border-bottom: 1px solid #2a2a2a; text-align: left; }
+  th { color: var(--frame-blue); }
+  code.inline { background: #1a1a1a; padding: 0.1em 0.4em; border-radius: 3px;
+                font-family: "Cascadia Code", monospace; color: var(--gold); font-size: 0.85em; }
+  ul { display: inline-block; text-align: left; }
+  .footer-note { position: absolute; bottom: 1em; left: 0; right: 0;
+                 color: #555; font-size: 0.55em; text-align: center; }
+</style>
+</head>
+<body>
+<div class="reveal"><div class="slides">
+
+<!-- ========== Slide 1: Title ========== -->
+<section>
+  <h1>Pokemon Status Line<br><span class="dim">+</span> Gacha</h1>
+  <p class="subtitle">Claude Code 的 GBA 風寶可夢小遊戲</p>
+  <p style="margin-top: 1.5em;">
+    把 <code class="inline">$1 USD</code> 的 session cost 變成 <span class="gold">1 coin</span><br>
+    再變成卡片、buddy、徽章、戰績
+  </p>
+  <p class="dim" style="margin-top: 1.5em; font-size: 0.65em;">
+    Windows + PowerShell &nbsp;·&nbsp; Gen 1 (151) &nbsp;·&nbsp; MIT &nbsp;·&nbsp; github.com/buzzshu/pokemon-statusline
+  </p>
+</section>
+
+<!-- ========== Slide 2: 安裝 ========== -->
+<section>
+  <h2>一行裝完</h2>
+<pre><code class="powershell">git clone https://github.com/buzzshu/pokemon-statusline.git
+cd pokemon-statusline
+powershell -ExecutionPolicy Bypass -File install.ps1</code></pre>
+  <ul>
+    <li>自動 patch <code class="inline">~/.claude/settings.json</code>（加 <code class="inline">statusLine</code> + <code class="inline">permissions.allow</code>）</li>
+    <li>複製引擎、151 sprites、Pokédex 資料到 <code class="inline">~/.claude/</code></li>
+    <li>保留現有 <code class="inline">gacha-state.json</code> — 重灌不會洗你的進度</li>
+    <li>開新 Claude Code session 就 live</li>
+  </ul>
+  <p class="subtitle" style="margin-top: 1.2em;">
+    需要 Claude Code 2.1+ · Windows Terminal · PowerShell 5.1+
+  </p>
+</section>
+
+<!-- ========== Slide 3: Status Line Demo ========== -->
+<section>
+  <h2>狀態列：邊工作邊養寵物</h2>
+<pre><code>  <span style="color:#ffaa33">EVENT</span> <span style="color:#ffe833">⚡</span> <span style="color:#ffd86b">雷光星期四</span> <span class="dim">— 30% pull 重抽到</span> <span style="color:#ffe833">ELECTRIC</span>
+
+  <span class="gold">╔═══</span> <span style="color:#ffe833">POKEMON</span> <span class="gold">═════════════════════════════════════════════════╗</span>
+  <span class="gold">║</span>                                                                <span class="gold">║</span>
+  <span class="gold">║</span>     <span class="blue">[sprite1]</span>   <span class="blue">[sprite2]</span>   <span class="blue">[sprite3]</span>      <span class="blue">╔══</span> <span class="gold">STATUS</span> <span class="blue">════════╗</span>   <span class="gold">║</span>
+  <span class="gold">║</span>                                              <span class="blue">║</span> <span class="red">HP</span> <span class="green">████</span><span class="dim">▒</span> 90% 7d <span class="blue">║</span>   <span class="gold">║</span>
+  <span class="gold">║</span>     <span class="blue">◈</span>#008 <span style="color:#fff">卡咪龜</span>  <span class="blue">⚡</span>#025 皮卡丘  <span class="blue">☆</span>#143 卡比獸  <span class="blue">║</span> <span class="orange">MP</span> <span class="green">████</span><span class="dim">▒</span> 80% 5h <span class="blue">║</span>   <span class="gold">║</span>
+  <span class="gold">║</span>     <span class="green">LV. 33</span> <span class="green">██</span><span class="dim">▒▒▒</span> 12/33                          <span class="blue">║</span> <span class="blue">SP</span> <span class="green">█████</span> 97% 5k  <span class="blue">║</span>   <span class="gold">║</span>
+  <span class="gold">║</span>                                              <span class="blue">║</span> <span class="gold">⛁</span>  231 coin       <span class="blue">║</span>   <span class="gold">║</span>
+  <span class="gold">║</span>                                              <span class="blue">║</span> DEX 37/151        <span class="blue">║</span>   <span class="gold">║</span>
+  <span class="gold">║</span>                                              <span class="blue">║</span> <span class="dim">LAST</span> <span class="gold">R</span> <span style="color:#fff">飛腿郎</span>     <span class="blue">║</span>   <span class="gold">║</span>
+  <span class="gold">║</span>                                              <span class="blue">║</span> <span style="color:#c896ff">STR</span> <span class="gold">✦✦✦</span> 3 (best 7)<span class="blue">║</span>   <span class="gold">║</span>
+  <span class="gold">║</span>                                              <span class="blue">╚════════════════════╝</span>   <span class="gold">║</span>
+  <span class="gold">║</span>                                              <span class="blue">╔══</span> <span class="gold">BADGES</span> <span class="blue">════════╗</span>   <span class="gold">║</span>
+  <span class="gold">║</span>                                              <span class="blue">║</span> <span class="gold">◆</span> <span class="dim">· · · · · · ·</span> 1/8<span class="blue">║</span>   <span class="gold">║</span>
+  <span class="gold">║</span>                                              <span class="blue">╚════════════════════╝</span>   <span class="gold">║</span>
+  <span class="gold">╚══════════════════════════════════════════════════════════════════╝</span></code></pre>
+  <p style="font-size: 0.7em; margin-top: 1em;">
+    <span class="red">HP</span> = 7-day 配額剩多少 &nbsp; <span class="orange">MP</span> = 5-hour &nbsp; <span class="blue">SP</span> = context window 距離 compaction
+  </p>
+  <p style="font-size: 0.65em;" class="dim">
+    coin 每 $1 USD session cost 自動 +1 &nbsp;·&nbsp; buddy 每 session +1 exp &nbsp;·&nbsp; 1% 機率野生寶可夢 spawn
+  </p>
+</section>
+
+<!-- ========== Slide 4: 三大主軸 ========== -->
+<section>
+  <h2>三大主軸</h2>
+  <div class="feature-grid">
+    <div class="feature-card">
+      <h4>🎴 抽卡收集</h4>
+      <p><strong>151 隻 Gen 1。</strong> Rarity C 90% / U 7% / R 3%；HR 神獸只在 wild encounter 出現。1/4096 shiny。</p>
+      <p style="margin-top: 0.5em;">每天輪換主題屬性，30% 機率重抽到該屬性。</p>
+    </div>
+    <div class="feature-card">
+      <h4>⚔️ 養成戰鬥</h4>
+      <p><strong>每隻 slot 獨立 EXP。</strong> Buddy 每 session +1，其他成員打 gym 才會練。三角等級曲線 L=⌊√(2·exp)⌋+1。</p>
+      <p style="margin-top: 0.5em;">canonical Gen 1 進化等級（妙蛙 L16、暴鯉 L20、超夢不進化）。</p>
+    </div>
+    <div class="feature-card">
+      <h4>🏆 道館闖關</h4>
+      <p><strong>8 個 Gen 1 道館。</strong> 小剛 L14 → 阪木 L50，每個給對應徽章 glyph (◆◇✦❀★♥▲●)。</p>
+      <p style="margin-top: 0.5em;">真 type chart 戰鬥引擎、speed priority、1/16 crit。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ========== Slide 5: 指令一覽 ========== -->
+<section>
+  <h2><code class="inline">/gacha</code> 指令</h2>
+  <table style="width: 90%;">
+    <tr><th>指令</th><th>說明</th></tr>
+    <tr><td><span class="cmd">pull</span> / <span class="cmd">pulls N</span></td><td>1 coin 抽 1 張卡；新 wt tab 跑 sprite 揭曉動畫</td></tr>
+    <tr><td><span class="cmd">buddy ID</span></td><td>設 leader（從 team 內找出來，保留 exp）</td></tr>
+    <tr><td><span class="cmd">team add/remove/move</span></td><td>編 6 人 team，dupe 用 [A][B][C] 標籤</td></tr>
+    <tr><td><span class="cmd">evolve ID</span></td><td>進化指定 slot（找最高 exp 那隻），cost = 進化等級</td></tr>
+    <tr><td><span class="cmd">gym N</span></td><td>挑戰 1~8 道館，戰鬥動畫在新 wt tab</td></tr>
+    <tr><td><span class="cmd">trade</span></td><td>5 dupe → 1 隨機 R（也有揭曉動畫）</td></tr>
+    <tr><td><span class="cmd">catch</span></td><td>對 wild 神獸丟 Poké Ball（3 次機會）</td></tr>
+    <tr><td><span class="cmd">badges</span> / <span class="cmd">trainer</span> / <span class="cmd">dex</span> / <span class="cmd">bag</span> / <span class="cmd">album</span></td><td>各種視覺化檢視</td></tr>
+    <tr><td><span class="cmd">theme [gba|crystal|dark]</span></td><td>狀態列調色盤</td></tr>
+    <tr><td><span class="cmd">stats ID</span> / <span class="cmd">achievements</span> / <span class="cmd">event</span></td><td>基礎值 / 21 個成就 / 今日主題</td></tr>
+  </table>
+</section>
+
+<!-- ========== Slide 6: 戰鬥引擎 ========== -->
+<section>
+  <h2>戰鬥引擎</h2>
+  <ul>
+    <li><strong>15 屬性 type chart</strong>（Gen 1 canonical：含 Ghost 對 Psychic 0× 的歷史 bug 修正版）</li>
+    <li><strong>18 隻 flagship signature 招式</strong>（御三家終形、5 神獸、皮卡丘、卡比獸、超夢、夢幻⋯）</li>
+    <li><strong>其他 133 隻自動衍生招式</strong>（type1 弱招 + stage≥1 強招 + 副屬性弱招）</li>
+    <li><strong>AI 每回合算 power × typeMul 挑最佳招</strong> — 雙屬性自動切到剋對手的那邊</li>
+    <li><strong>STAB 1.5×、1/16 crit ×2、speed priority</strong>、0.85–1.0 隨機係數</li>
+  </ul>
+<pre style="margin-top: 1em;"><code>  你的 <span class="orange">◈</span> #006 噴火龍 LV. 35 使出 <span class="red">大字爆</span>！   <span class="gold">(效果絕佳!)</span>  <span class="gold">★ 擊出要害！</span>
+  → 對 #095 大岩蛇 造成 142 傷害.  <span class="red">██</span><span class="dim">▒▒▒▒▒▒▒▒▒▒▒▒▒</span> 8 <span class="dim">/110</span></code></pre>
+</section>
+
+<!-- ========== Slide 7: 近期更新 ========== -->
+<section>
+  <h2>最近 6 個 commit</h2>
+  <table style="width: 95%; font-size: 0.65em;">
+    <tr><th>主題</th><th>核心改動</th></tr>
+    <tr><td class="gold">Mutex 並發鎖</td><td>跨 process Mutex 序列化 statusline + gacha 對 state.json 的存取，根治 race-reset</td></tr>
+    <tr><td class="gold">Per-pokemon EXP</td><td>每個 team slot 各自的 LV/exp，buddy 是 team[0] 的 view，evolve 不再限於 leader</td></tr>
+    <tr><td class="gold">狀態列升級</td><td>EVENT 行 / STREAK 行 / 主題切換（gba · crystal · dark）</td></tr>
+    <tr><td class="gold">招式系統 + crit</td><td>Hybrid signature 招式表 + AI 挑招邏輯，加 1/16 critical hit</td></tr>
+    <tr><td class="gold">道館徽章</td><td><code class="inline">/gacha badges</code> 視圖、trainer card BADGES 列、statusline BADGES 子框</td></tr>
+    <tr><td class="gold">CLAUDE.md</td><td>給未來 Claude Code session 的 codebase 導覽</td></tr>
+  </table>
+</section>
+
+<!-- ========== Slide 8: 開始玩 ========== -->
+<section>
+  <h2>開始玩</h2>
+<pre><code class="powershell">git clone https://github.com/buzzshu/pokemon-statusline.git
+cd pokemon-statusline
+powershell -ExecutionPolicy Bypass -File install.ps1</code></pre>
+  <p style="margin-top: 1.2em;">開新 Claude Code session，狀態列立刻變身寶可夢卡帶</p>
+  <p style="margin-top: 1em; font-size: 0.85em;">
+    <span class="cmd">/gacha pull</span> &nbsp;→ 抽你的第一張卡<br>
+    <span class="cmd">/gacha buddy &lt;id&gt;</span> &nbsp;→ 設為 buddy 開始累 exp<br>
+    <span class="cmd">/gacha gym 1</span> &nbsp;→ 衝灰色道館拿第一顆徽章
+  </p>
+  <p class="dim" style="margin-top: 2em; font-size: 0.7em;">
+    每跑 $1 USD 的 Claude Code session 就自動 +1 coin —<br>
+    工作越認真，pokémon 越多。
+  </p>
+  <p class="footer-note">
+    github.com/buzzshu/pokemon-statusline &nbsp;·&nbsp; MIT &nbsp;·&nbsp; sprites: pokemon-colorscripts
+  </p>
+</section>
+
+</div></div>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script>
+  Reveal.initialize({
+    hash: true,
+    transition: 'fade',
+    width: 1280,
+    height: 800,
+    margin: 0.06,
+    controls: true,
+    progress: true
+  });
+</script>
+</body>
+</html>
