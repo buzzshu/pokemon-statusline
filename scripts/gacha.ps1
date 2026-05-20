@@ -188,6 +188,51 @@ $TypeChart = @{
 # physical = everything else. Determines atk/def stat used in damage calc.
 $SpecialTypes = @('fire','water','grass','electric','ice','psychic','dragon')
 
+# --- Move system (hybrid: shared type pool + per-pokemon signature kits) ---
+# $TypeMoves: each type has a weak (~50 power) and strong (~90 power) entry.
+# Get-Moveset uses these to build a default kit from stage + type1/type2.
+# $SignatureMoves overrides for flagship pokemon (Gen 1 starter finals, legendaries,
+# fan favorites) so they feel distinct instead of "another fire mon spamming fire".
+$TypeMoves = @{
+    'normal'   = @(@{name='撞擊';power=50}, @{name='體當';power=90})
+    'fire'     = @(@{name='火花';power=50}, @{name='噴射火焰';power=90})
+    'water'    = @(@{name='水槍';power=50}, @{name='水炮';power=90})
+    'electric' = @(@{name='電擊';power=50}, @{name='十萬伏特';power=90})
+    'grass'    = @(@{name='飛葉快刀';power=50}, @{name='花瓣舞';power=90})
+    'ice'      = @(@{name='冰光線';power=50}, @{name='急凍光線';power=90})
+    'fighting' = @(@{name='空手劈';power=50}, @{name='飛膝踢';power=90})
+    'poison'   = @(@{name='毒拳';power=50}, @{name='毒擊';power=90})
+    'ground'   = @(@{name='挖洞';power=50}, @{name='地震';power=90})
+    'flying'   = @(@{name='翅膀攻擊';power=50}, @{name='飛行';power=90})
+    'psychic'  = @(@{name='念力';power=50}, @{name='精神強念';power=90})
+    'bug'      = @(@{name='蟲咬';power=50}, @{name='蟲鳴';power=90})
+    'rock'     = @(@{name='落石';power=50}, @{name='岩崩';power=90})
+    'ghost'    = @(@{name='詛咒一擊';power=50}, @{name='暗影球';power=90})
+    'dragon'   = @(@{name='龍之怒';power=50}, @{name='逆鱗';power=90})
+}
+# Signature kits: dex_id -> array of {name, type, power}. Caps at power 110 to keep
+# battle balance (no 150-power "destruction" without recharge mechanic).
+$SignatureMoves = @{
+    3   = @(@{name='花瓣舞';type='grass';power=90},     @{name='日光束';type='grass';power=110},   @{name='毒拳';type='poison';power=50})
+    6   = @(@{name='噴射火焰';type='fire';power=90},    @{name='大字爆';type='fire';power=110},   @{name='翅膀攻擊';type='flying';power=60})
+    9   = @(@{name='水炮';type='water';power=90},       @{name='高壓水泵';type='water';power=110}, @{name='急凍光線';type='ice';power=90})
+    25  = @(@{name='十萬伏特';type='electric';power=90}, @{name='電光一閃';type='normal';power=40}, @{name='打雷';type='electric';power=110})
+    26  = @(@{name='打雷';type='electric';power=110},   @{name='十萬伏特';type='electric';power=90}, @{name='電光一閃';type='normal';power=40})
+    65  = @(@{name='精神強念';type='psychic';power=90}, @{name='念力';type='psychic';power=50},   @{name='高速移動';type='psychic';power=0})  # 高速移動 0 power = utility, AI deprioritizes
+    68  = @(@{name='飛膝踢';type='fighting';power=90},  @{name='地震';type='ground';power=90},     @{name='岩崩';type='rock';power=90})
+    94  = @(@{name='暗影球';type='ghost';power=90},     @{name='毒擊';type='poison';power=90},     @{name='精神強念';type='psychic';power=90})
+    121 = @(@{name='急凍光線';type='ice';power=90},     @{name='精神強念';type='psychic';power=90}, @{name='高壓水泵';type='water';power=110})
+    130 = @(@{name='高壓水泵';type='water';power=110}, @{name='龍之怒';type='dragon';power=50},  @{name='啃咬';type='normal';power=60})
+    142 = @(@{name='飛行';type='flying';power=90},      @{name='岩崩';type='rock';power=90},       @{name='超音波';type='normal';power=55})
+    143 = @(@{name='體當';type='normal';power=90},      @{name='地震';type='ground';power=90},     @{name='啃咬';type='normal';power=60})
+    144 = @(@{name='暴風雪';type='ice';power=110},     @{name='飛行';type='flying';power=90},     @{name='急凍光線';type='ice';power=90})
+    145 = @(@{name='打雷';type='electric';power=110}, @{name='鑽嘴啄';type='flying';power=80},   @{name='十萬伏特';type='electric';power=90})
+    146 = @(@{name='大字爆';type='fire';power=110},   @{name='飛行';type='flying';power=90},     @{name='噴射火焰';type='fire';power=90})
+    149 = @(@{name='逆鱗';type='dragon';power=90},     @{name='急凍光線';type='ice';power=90},    @{name='翅膀攻擊';type='flying';power=60})
+    150 = @(@{name='精神強念';type='psychic';power=90}, @{name='暗影球';type='ghost';power=90},  @{name='念力';type='psychic';power=50})
+    151 = @(@{name='精神強念';type='psychic';power=90}, @{name='高壓水泵';type='water';power=110}, @{name='打雷';type='electric';power=110})
+}
+
 # --- 8 Gen 1 gym leaders (canonical RBY) ---
 # Each row carries a `badge_idx` into $BadgeGlyphs below; statusline.ps1 keeps an
 # independent copy of the glyph/color table — see CLAUDE.md "Sprite rendering +
@@ -1128,6 +1173,48 @@ function Show-Stats($state, [int]$id) {
 }
 
 # --- Battle engine ---
+# Returns array of moves for a combatant. Signature kit wins if defined; otherwise
+# auto-derives from type1/type2 + stage (stage 0 mons get only type1-weak, stage 1+
+# get type1-strong too, dual types always get type2-weak as coverage).
+function Get-Moveset($c) {
+    $id = [int]$c.id
+    if ($SignatureMoves.ContainsKey($id)) { return $SignatureMoves[$id] }
+    $moves = @()
+    $t1 = $c.type1
+    $t2 = $c.type2
+    $stage = if ($Dex.ContainsKey([string]$id)) { [int]$Dex[[string]$id].stage } else { 0 }
+    if ($TypeMoves.ContainsKey($t1)) {
+        $w = $TypeMoves[$t1][0]
+        $moves += @{name=$w.name; type=$t1; power=$w.power}
+        if ($stage -ge 1) {
+            $s = $TypeMoves[$t1][1]
+            $moves += @{name=$s.name; type=$t1; power=$s.power}
+        }
+    }
+    if ($t2 -and $TypeMoves.ContainsKey($t2)) {
+        $w = $TypeMoves[$t2][0]
+        $moves += @{name=$w.name; type=$t2; power=$w.power}
+    }
+    if ($moves.Count -eq 0) {
+        $moves += @{name='掙扎'; type='normal'; power=30}   # fallback for missing type data
+    }
+    return ,$moves
+}
+# AI picks the move with highest power * typeMul against current defender.
+# 0-power moves (status-like signature entries) get score 0, so they're chosen only
+# when literally nothing else hits.
+function Pick-Move($attacker, $defender) {
+    $moves = Get-Moveset $attacker
+    $best = $moves[0]
+    $bestScore = -1.0
+    foreach ($m in $moves) {
+        $mul = Get-TypeMultiplier $m.type $defender.type1 $defender.type2
+        $score = [double]$m.power * $mul
+        if ($score -gt $bestScore) { $best = $m; $bestScore = $score }
+    }
+    return $best
+}
+
 function Get-TypeMultiplier([string]$atkType, $defType1, $defType2) {
     $m = 1.0
     foreach ($dt in @($defType1, $defType2)) {
@@ -1161,19 +1248,24 @@ function Build-Combatant([int]$id, [int]$lvl, [bool]$shiny = $false) {
     }
 }
 
-function Compute-Damage($atk, $def) {
-    $isSpecial = $SpecialTypes -contains $atk.type1
+function Compute-Damage($atk, $def, $move) {
+    $moveType  = [string]$move.type
+    $movePower = [int]$move.power
+    $isSpecial = $SpecialTypes -contains $moveType
     $atkStat = if ($isSpecial) { [int]$atk.stats.spa } else { [int]$atk.stats.atk }
     $defStat = if ($isSpecial) { [int]$def.stats.spd } else { [int]$def.stats.def }
-    $power = 80
-    $base = ((2.0 * $atk.level + 10) * $power * $atkStat / (250.0 * $defStat)) + 2
-    $stab = 1.5   # attacker uses its own type
-    $typeMul = Get-TypeMultiplier $atk.type1 $def.type1 $def.type2
+    $base = ((2.0 * $atk.level + 10) * $movePower * $atkStat / (250.0 * $defStat)) + 2
+    # STAB only when move type matches one of the attacker's own types
+    $stab = if ($moveType -eq $atk.type1 -or ($atk.type2 -and $moveType -eq $atk.type2)) { 1.5 } else { 1.0 }
+    $typeMul = Get-TypeMultiplier $moveType $def.type1 $def.type2
     $variance = (Get-Random -Minimum 85 -Maximum 101) / 100.0
-    $dmg = [int][Math]::Floor($base * $stab * $typeMul * $variance)
-    if ($dmg -lt 1 -and $typeMul -gt 0) { $dmg = 1 }
-    if ($typeMul -eq 0) { $dmg = 0 }
-    return @{ damage = $dmg; typeMul = $typeMul; isSpecial = $isSpecial }
+    # Critical hit: 1/16 base chance, x2 damage (no stat-stage interactions)
+    $isCrit = ((Get-Random -Maximum 16) -eq 0)
+    $critMul = if ($isCrit) { 2.0 } else { 1.0 }
+    $dmg = [int][Math]::Floor($base * $stab * $typeMul * $variance * $critMul)
+    if ($dmg -lt 1 -and $typeMul -gt 0 -and $movePower -gt 0) { $dmg = 1 }
+    if ($typeMul -eq 0 -or $movePower -le 0) { $dmg = 0 }
+    return @{ damage = $dmg; typeMul = $typeMul; isSpecial = $isSpecial; isCrit = $isCrit; move = $move }
 }
 
 function Format-Combatant($c) {
@@ -1191,17 +1283,22 @@ function Format-HPBar($c) {
 }
 
 function Take-Turn($attacker, $defender) {
-    $r = Compute-Damage $attacker $defender
+    $move = Pick-Move $attacker $defender
+    $r = Compute-Damage $attacker $defender $move
     $effTag = ''
     if     ($r.typeMul -eq 0)    { $effTag = Color '38;5;245' '   (沒有效果...)' }
     elseif ($r.typeMul -ge 2)    { $effTag = Color '1;38;5;226' '   (效果絕佳!)' }
     elseif ($r.typeMul -le 0.5)  { $effTag = Color '38;5;245' '   (效果不太好)' }
+    $critTag = if ($r.isCrit -and $r.damage -gt 0) { '  ' + (Color '1;38;5;220' '★ 擊出要害！') } else { '' }
     $attName = Format-Combatant $attacker
-    $atkStyle = if ($r.isSpecial) { '特殊招式' } else { '物理招式' }
-    Print "  $attName 使出 $(Color $attacker.glyphCol $attacker.type1.ToUpper())系$atkStyle！$effTag"
+    $moveCol = if ($TypeColor.ContainsKey($r.move.type)) { $TypeColor[$r.move.type] } else { '38;5;255' }
+    $moveTxt = Color $moveCol $r.move.name
+    Print "  $attName 使出 $moveTxt！$effTag$critTag"
     Start-Sleep -Milliseconds 600
     if ($r.typeMul -eq 0) {
         Print (Dim "  → 但是 #$('{0:D3}' -f $defender.id) $($defender.name_zh) 不受影響.")
+    } elseif ($r.damage -le 0) {
+        Print (Dim "  → 但是沒有造成傷害.")
     } else {
         $defender.hp_cur = [int][Math]::Max(0, [int]$defender.hp_cur - [int]$r.damage)
         Print "  $(Color '38;5;196' "→ 對 #$('{0:D3}' -f $defender.id) $($defender.name_zh) 造成 $($r.damage) 傷害.") $(Format-HPBar $defender)"
