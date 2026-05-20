@@ -24,6 +24,20 @@ function Color([string]$code, [string]$text) { "$ESC[${code}m$text$ESC[0m" }
 function Gold([string]$text) { "$ESC[1;38;5;220m$text$ESC[0m" }
 function Dim([string]$text) { "$ESC[2m$text$ESC[0m" }
 
+# --- Cross-process state lock (mirrors gacha.ps1 helpers) ---
+# Global\ namespace so it spans CC sessions. Keep in sync with gacha.ps1.
+function New-StateLock {
+    return New-Object System.Threading.Mutex($false, 'Global\PokemonGachaState')
+}
+function Acquire-StateLock($mutex, [int]$timeoutMs = 2000) {
+    if ($null -eq $mutex) { return $false }
+    try { return $mutex.WaitOne($timeoutMs) }
+    catch [System.Threading.AbandonedMutexException] { return $true }
+}
+function Release-StateLock($mutex) {
+    if ($null -ne $mutex) { try { $mutex.ReleaseMutex() } catch {} }
+}
+
 # --- Read context JSON from stdin ---
 # Verified Claude Code 2.1.144 stdin schema (see notes in repo):
 #   ctx.rate_limits.five_hour.used_percentage  /  ctx.rate_limits.seven_day.used_percentage
@@ -89,8 +103,22 @@ if ($gachaState) {
     }
 
     if ($dirty) {
+        # Acquire cross-process mutex before re-read/write. Short timeout: if a
+        # /gacha command is busy we skip THIS write (re-tries on next render);
+        # statusline must never block a CC frame.
+        $__slMutex = New-StateLock
+        $__slLocked = Acquire-StateLock $__slMutex 2000
+        if (-not $__slLocked) {
+            # Couldn't get the lock — abandon write, leaving deltas for the next
+            # render to pick up (cost_usd_processed didn't change, so the same
+            # coinsToAdd will recompute; session tick is one-shot but rare enough
+            # to lose occasionally).
+            Release-StateLock $__slMutex
+        } else {
+        try {
         # Re-read latest state right before write to avoid stomping on concurrent
-        # gacha.ps1 mutations (team/owned/last_pull/stats).
+        # gacha.ps1 mutations (team/owned/last_pull/stats). Belt-and-suspenders
+        # with the mutex above.
         $fresh = $null
         try {
             $fj = Get-Content -Path $gachaStateFile -Raw -Encoding UTF8 -ErrorAction Stop
@@ -160,6 +188,10 @@ if ($gachaState) {
         $fresh.cost_log = $kept
 
         try { $fresh | ConvertTo-Json -Depth 12 | Out-File -FilePath $gachaStateFile -Encoding utf8 -Force } catch {}
+        } finally {
+            Release-StateLock $__slMutex
+        }
+        }
     }
 }
 

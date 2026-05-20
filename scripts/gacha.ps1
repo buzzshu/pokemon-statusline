@@ -567,6 +567,29 @@ function Sync-Buddy-From-Team($state) {
     }
 }
 
+# --- Cross-process lock around state read/write ---
+# Named mutex prefixed with Global\ so it spans Claude Code sessions on Windows
+# (Local namespace is per-terminal-session and wouldn't catch the race between
+# gacha.ps1 and statusline.ps1 running in different CC sessions). statusline.ps1
+# carries a duplicate of these helpers — keep in sync.
+function New-StateLock {
+    return New-Object System.Threading.Mutex($false, 'Global\PokemonGachaState')
+}
+function Acquire-StateLock($mutex, [int]$timeoutMs = 5000) {
+    if ($null -eq $mutex) { return $false }
+    try {
+        return $mutex.WaitOne($timeoutMs)
+    } catch [System.Threading.AbandonedMutexException] {
+        # Previous holder crashed without releasing. We now own the mutex —
+        # treat as acquired. The state file's backup-on-write design means
+        # we can recover from any partial write that crash left behind.
+        return $true
+    }
+}
+function Release-StateLock($mutex) {
+    if ($null -ne $mutex) { try { $mutex.ReleaseMutex() } catch {} }
+}
+
 function Save-State($state) {
     $dir = Split-Path -Parent $StateFile
     if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
@@ -1964,9 +1987,21 @@ function Show-Help {
 }
 
 # --- Main dispatch ---
-$state = Load-State
+# Hold a cross-process mutex for the whole load+mutate+save sequence. statusline.ps1
+# races us when the user spams /gacha commands faster than the previous reveal
+# animation completes; without the lock the next Load-State can read an empty file
+# mid-truncate and reset progress to defaults (corrupt-backup recovery kicks in but
+# the *current* command's state mutation is still on the lost-write side).
+$__gachaMutex = New-StateLock
+$__gachaLocked = Acquire-StateLock $__gachaMutex 10000
+if (-not $__gachaLocked) {
+    Write-Warning "Couldn't acquire gacha-state lock within 10s; another /gacha command may be hung. Try again."
+    exit 1
+}
+try {
+    $state = Load-State
 
-switch ($Cmd.ToLower()) {
+    switch ($Cmd.ToLower()) {
     'status'  { Show-Status $state }
     ''        { Show-Status $state }
     'pull'    { [void](Pull-Pack $state $false) }
@@ -2062,7 +2097,7 @@ if ($newAchv.Count -gt 0) {
     }
     Print ''
 }
-Save-State $state
-
-
-
+    Save-State $state
+} finally {
+    Release-StateLock $__gachaMutex
+}
