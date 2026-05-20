@@ -768,6 +768,50 @@ if ($gachaState -and $gachaState.encounter -and $gachaState.encounter.id -and [i
     }
 }
 
+# --- Buddy dialog: occasional zh-TW quip keyed by buddy.type1 ---
+# Catalog of 3-4 lines per type. Picked deterministically from session_id+type
+# so within a session the line is stable; new session may roll a new one. Shown
+# only 50% of the time (also deterministic from session_id) — keeps it
+# occasional instead of every-render chatty.
+$BuddyLines = @{
+    'normal'   = @('一切如常。', '今天天氣不錯。', '陪你工作中～', '想做點什麼但又懶得動')
+    'fire'     = @('🔥 燃燒吧！', '今天的火焰特別旺。', '不要靠太近，會燙到。', '咳，剛剛打了一個熱噴嚏')
+    'water'    = @('水量充沛，狀態 OK。', '想去衝浪。', '今天的水很清涼。', '~~~ 飄飄的')
+    'electric' = @('⚡ 又是充滿電的一天！', '靜電有點刺刺的⚡', '你的鍵盤聽起來像在打字呢⚡', '今天的雷雲很有食慾。')
+    'grass'    = @('光合作用中... ☘', '土壤的味道真好聞。', '感覺今天會發芽。', '葉子有點蜷起來了')
+    'ice'      = @('外面好暖，我不喜歡。', '今天我發了冰光線。', '結霜的觸感很棒。', '不要靠太近，會冷。')
+    'fighting' = @('💪 訓練時間到！', '想單挑嗎？', '今天的拳頭特別硬。', '出招要快、要狠、要準。')
+    'poison'   = @('別碰我喔～', '今天的毒液濃度剛剛好', '聞起來像紫色', '我的觸手有自己的想法')
+    'ground'   = @('土壤鬆軟，挖洞容易。', '今天的地震只有 1 級', '泥土的味道真好', '腳下的塵土告訴我...')
+    'flying'   = @('飛行中... 風很大', '想看雲嗎？', '從上面看下來，你超小', '今天的天空很藍')
+    'psychic'  = @('我感應到... 你在改 code 嗎', '心靈感應很累', '腦袋有點抽抽的', '預感今天會打贏')
+    'bug'      = @('觸角顫動中', '光線好刺眼', '今天我絲很多', '蟲蟲危機！')
+    'rock'     = @('硬硬的，沒事', '岩石不會說話。', '今天的礦物心情不錯', '靜止中...')
+    'ghost'    = @('呵呵呵... 👻', '你看得到我嗎', '影子不見了！', '今天適合鬧鬼')
+    'dragon'   = @('龍威壓，發動！', '今天感覺特別強', '想噴一下嗎', '神龍見首不見尾')
+}
+
+$buddyBanner = $null
+if ($gachaState -and $gachaState.buddy -and $gachaState.buddy.id) {
+    $btype = [string]$gachaState.buddy.type1
+    if ($BuddyLines.ContainsKey($btype) -and -not [string]::IsNullOrEmpty($sessionId)) {
+        # Deterministic hash of session_id → 50% gate + line pick
+        $h = 0
+        foreach ($ch in $sessionId.ToCharArray()) { $h = ($h * 31 + [int]$ch) -band 0x7fffffff }
+        if (($h % 2) -eq 0) {
+            $lines = $BuddyLines[$btype]
+            $idx = $h % $lines.Count
+            $nick = $null
+            if ($gachaState.buddy.PSObject.Properties.Name -contains 'nickname' -and $gachaState.buddy.nickname) {
+                $nick = [string]$gachaState.buddy.nickname
+            }
+            $bname = if ($nick) { $nick } else { $gachaState.buddy.name_zh }
+            $bcol = if ($tCol.ContainsKey($btype)) { $tCol[$btype] } else { '38;5;255' }
+            $buddyBanner = "  $(Color $bcol $bname): $(Color '38;5;255' $lines[$idx])"
+        }
+    }
+}
+
 # --- Daily theme banner (above outer frame): rotates by weekday, mirrors $DailyThemes in gacha.ps1 ---
 $DailyThemes = @{
     'Monday'    = @{ name='蟲蟲星期一'; type='bug';      glyph=[char]0x2723 }
@@ -787,6 +831,7 @@ if ($DailyThemes.ContainsKey($dowKey)) {
 }
 
 # --- Output ---
+if ($buddyBanner) { "$RESET_EOL$buddyBanner$RESET_EOL" }
 if ($themeBanner) { "$RESET_EOL$themeBanner$RESET_EOL" }
 if ($encBanner)   { "$RESET_EOL$encBanner$RESET_EOL" }
 "$RESET_EOL$oTop$RESET_EOL"

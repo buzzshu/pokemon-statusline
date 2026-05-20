@@ -649,6 +649,9 @@ function Load-State {
     # Batch 5: items bag. Lazy-init to empty; missing keys default to 0 on read.
     if (-not $state.Contains('items') -or $null -eq $state.items) { $state.items = [ordered]@{} }
     if (-not $state.Contains('repel_sessions')) { $state.repel_sessions = 0 }
+    # Daily login bonus tracking (batch 7)
+    if (-not $state.Contains('last_daily_ep')) { $state.last_daily_ep = 0 }
+    if (-not $state.Contains('daily_streak'))  { $state.daily_streak = 0 }
     # Stats counters added in batch 6 (achievements expansion). Lazy-add missing keys.
     if (-not $state.stats.Contains('items_bought'))      { $state.stats.items_bought = 0 }
     if (-not $state.stats.Contains('stones_used'))       { $state.stats.stones_used = 0 }
@@ -1642,6 +1645,45 @@ function Show-Gyms($state) {
     Print ''
 }
 
+function Claim-Daily($state) {
+    $nowEp = [int]([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())
+    $lastEp = if ($state.last_daily_ep) { [int]$state.last_daily_ep } else { 0 }
+    $hoursSince = if ($lastEp -gt 0) { [Math]::Floor(($nowEp - $lastEp) / 3600.0) } else { 99 }
+    if ($hoursSince -lt 24) {
+        $waitH = 24 - $hoursSince
+        Print ''
+        Print "  $(Color '38;5;245' '冷卻中。')再 $(Color '1;38;5;220' "$waitH 小時") 才能領下一次每日獎勵。"
+        Print "  $(Dim "目前 daily streak: $([int]$state.daily_streak)")"
+        Print ''
+        return
+    }
+    # If user missed a day (>48h since last claim), streak resets to 1; otherwise +1
+    $oldStreak = [int]$state.daily_streak
+    $newStreak = if ($hoursSince -ge 48 -or $lastEp -eq 0) { 1 } else { $oldStreak + 1 }
+    # Coin reward scales with streak: 5 base + min(streak, 7) bonus, so day 7+ gives 12 coin
+    $coinReward = 5 + [Math]::Min($newStreak, 7)
+    $state.coins = [int]$state.coins + $coinReward
+    $state.last_daily_ep = $nowEp
+    $state.daily_streak = $newStreak
+    Print ''
+    Print (Bold "=== Daily Login Bonus ===")
+    Print ''
+    Print "  $(Color '1;38;5;220' "+$coinReward coin")  $(Dim "(base 5 + streak bonus $([Math]::Min($newStreak, 7)))")"
+    # On streak milestones, also drop a free item
+    $bonusItem = $null
+    if ($newStreak -eq 7)  { $bonusItem = 'great-ball' }
+    if ($newStreak -eq 14) { $bonusItem = 'ultra-ball' }
+    if ($newStreak -eq 30) { $bonusItem = 'master-ball' }
+    if ($bonusItem) {
+        Add-BagItem $state $bonusItem 1
+        $it = $Items[$bonusItem]
+        $g = Color $it.color "$($it.glyph)"
+        Print "  $(Color '1;38;5;82' '★ Streak milestone:') $g $(Color '1;38;5;255' "$($it.name_zh) × 1") $(Dim '(免費獎勵)')"
+    }
+    Print "  $(Dim "Daily streak: $oldStreak → $newStreak.  Coins now: $([int]$state.coins).")"
+    Print ''
+}
+
 function Rename-Pokemon($state, [int]$id, [string]$nickname) {
     if (-not $state.team -or $state.team.Count -eq 0) { Print (Color '38;5;196' "Team is empty."); return }
     if (-not $Dex.ContainsKey([string]$id)) { Print (Color '38;5;196' "Unknown pokemon id: $id"); return }
@@ -2409,6 +2451,7 @@ function Show-Help {
     Print "  /gacha use <slug>    consume item (rare-candy bumps buddy exp; great-ball auto-uses in catch)"
     Print "  /gacha moves <id>    show a pokemon's moveset (signature kit or auto-derived from types/stage)"
     Print "  /gacha rename <id> <nick>  give the highest-exp team slot of <id> a nickname (empty = clear)"
+    Print "  /gacha daily         claim 24h login bonus (5 coin + streak bonus; milestones at day 7/14/30 give balls)"
     Print "  /gacha achievements  show all 21 milestone achievements + earned dates"
     Print "  /gacha event         show today's themed pull bonus (rotates by weekday)"
     Print "  /gacha dex           Pokedex grid (every species ever caught)"
@@ -2532,6 +2575,7 @@ try {
         if ($null -ne $Arg3) { $nick = "$nick $Arg3" }
         Rename-Pokemon $state $id $nick
     }
+    'daily'   { Claim-Daily $state }
     'gym'     {
         if ([string]::IsNullOrWhiteSpace($Arg)) { Show-Gyms $state; break }
         $g = 0
