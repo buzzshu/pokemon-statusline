@@ -795,10 +795,14 @@ $buddyBanner = $null
 if ($gachaState -and $gachaState.buddy -and $gachaState.buddy.id) {
     $btype = [string]$gachaState.buddy.type1
     if ($BuddyLines.ContainsKey($btype) -and -not [string]::IsNullOrEmpty($sessionId)) {
-        # Deterministic hash of session_id → 50% gate + line pick
+        # Decoupled hashes so the 50% gate doesn't bias which lines get picked.
+        # Earlier bug: same hash for both meant gate(h%2==0) constrained h to
+        # even, and pick(h%4) on even h only ever yielded {0, 2} — half the
+        # lines were unreachable. Now: gate uses high bits, pick uses low bits.
         $h = 0
         foreach ($ch in $sessionId.ToCharArray()) { $h = ($h * 31 + [int]$ch) -band 0x7fffffff }
-        if (($h % 2) -eq 0) {
+        $gateBit = ($h -shr 16) -band 1
+        if ($gateBit -eq 0) {
             $lines = $BuddyLines[$btype]
             $idx = $h % $lines.Count
             $nick = $null
