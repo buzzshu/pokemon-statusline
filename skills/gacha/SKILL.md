@@ -81,7 +81,7 @@ Spawn the engine in a new Windows Terminal tab so the user sees the full output 
    - HR or shiny pulled → small celebration line.
    - `Not enough coins` will surface in the tab; mirror it inline so the user notices without switching focus.
 
-### B. Everything else (`status`, `buddy <ID>`, `team ...`, `dex`, `help`, `bag`, `items`, `shop`, `buy`, `use`, `moves`, `rename`, `daily`, `trainer`, `gyms`, `elite`, `champion`, `badges`, `theme`, `stats`, `achievements`, `event`) → run inline
+### B. Everything else (`status`, `buddy <ID>`, `team ...`, `dex`, `help`, `bag`, `items`, `shop`, `buy`, `use`, `moves`, `rename`, `daily`, `trainer`, `gyms`, `elite`, `champion`, `badges`, `theme`, `stats`, `achievements`, `event`, `titles`, `title`, `frames`, `frame`) → run inline
 
 These don't have an animation — they're one-shot prints. Just invoke the engine via the PowerShell tool:
 

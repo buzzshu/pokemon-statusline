@@ -89,6 +89,24 @@ function Get-ExpForLevel([int]$lvl) {
     return [int]($lvl * ($lvl - 1) / 2)
 }
 
+# Trainer total power. Σ(BST × LV / 100) over team + badges × 50.
+# Yields an integer that grows with both team depth and gym progress.
+function Get-PowerLevel($state) {
+    $total = 0
+    if ($state.team) {
+        foreach ($t in $state.team) {
+            $tid = [int]$t.id
+            $k = [string]$tid
+            $bst = if ($Stats.ContainsKey($k)) { [int]$Stats[$k].bst } else { 300 }
+            $lv = Get-Level ([int]$t.exp)
+            $total += [int]($bst * $lv / 100)
+        }
+    }
+    $badges = 0
+    if ($state.gyms_beaten) { $badges = @($state.gyms_beaten).Count }
+    return $total + ($badges * 50)
+}
+
 $ESC = [char]27
 function Color([string]$code, [string]$text) { "$ESC[${code}m$text$ESC[0m" }
 function Bold([string]$text) { "$ESC[1m$text$ESC[0m" }
@@ -383,6 +401,149 @@ $Achievements = @(
     @{ slug='champion';       name_zh='冠軍之路';   desc='擊敗冠軍';                                  kind='battle' }
 )
 
+$Frames = @(
+    @{ slug='gold';     name_zh='金色框';     color='38;5;220';   desc='預設邊框';                  check={ param($s) $true } }
+    @{ slug='fire';     name_zh='火焰框';     color='38;5;208';   desc='收集 5 種火屬性寶可夢';     check={ param($s) (Count-OwnedByType $s 'fire')     -ge 5 } }
+    @{ slug='water';    name_zh='水流框';     color='38;5;39';    desc='收集 5 種水屬性寶可夢';     check={ param($s) (Count-OwnedByType $s 'water')    -ge 5 } }
+    @{ slug='ice';      name_zh='冰晶框';     color='38;5;51';    desc='收集 3 種冰屬性寶可夢';     check={ param($s) (Count-OwnedByType $s 'ice')      -ge 3 } }
+    @{ slug='electric'; name_zh='雷光框';     color='38;5;226';   desc='收集 5 種電屬性寶可夢';     check={ param($s) (Count-OwnedByType $s 'electric') -ge 5 } }
+    @{ slug='star';     name_zh='星空框';     color='1;38;5;213'; desc='擊敗冠軍 (champion 稱號)';  check={ param($s) ($s.elite_beaten -and ($s.elite_beaten -contains 5)) } }
+)
+
+function Count-OwnedByType($state, [string]$type) {
+    $n = 0
+    foreach ($k in $state.owned.Keys) {
+        if ($null -ne $state.owned[$k].first_caught -and $Dex.ContainsKey($k)) {
+            $p = $Dex[$k]
+            if ($p.type1 -eq $type -or $p.type2 -eq $type) { $n++ }
+        }
+    }
+    return $n
+}
+
+function Check-Frames($state) {
+    if (-not $state.unlocked_frames) { $state.unlocked_frames = @('gold') }
+    if ($state.unlocked_frames -isnot [array]) { $state.unlocked_frames = @($state.unlocked_frames) }
+    $newly = @()
+    foreach ($f in $Frames) {
+        if ($state.unlocked_frames -contains $f.slug) { continue }
+        $ok = & $f.check $state
+        if ($ok) {
+            $state.unlocked_frames += $f.slug
+            $newly += $f.slug
+        }
+    }
+    return $newly
+}
+
+function Get-FrameColor($state) {
+    $slug = if ($state.current_frame) { [string]$state.current_frame } else { 'gold' }
+    foreach ($f in $Frames) { if ($f.slug -eq $slug) { return $f.color } }
+    return '38;5;220'
+}
+
+function Show-Frames($state) {
+    Print ''
+    Print (Bold "=== 訓練家邊框 ===")
+    Print ''
+    $unlocked = if ($state.unlocked_frames) { @($state.unlocked_frames) } else { @('gold') }
+    $cur = if ($state.current_frame) { [string]$state.current_frame } else { 'gold' }
+    foreach ($f in $Frames) {
+        $owned = $unlocked -contains $f.slug
+        $equip = ($cur -eq $f.slug)
+        $marker = if ($equip) { Color '1;38;5;226' '◉' } elseif ($owned) { Color '38;5;82' '✓' } else { Color '38;5;238' '·' }
+        $preview = Color $f.color '╔═══╗'
+        $name = if ($owned) { Color $f.color $f.name_zh } else { Dim $f.name_zh }
+        Print "  $marker $preview $name ($($f.slug))  $(Dim $f.desc)"
+    }
+    Print ''
+    Print "  $(Dim '/gacha frame <slug>  · 預覽切換套用後執行 /gacha trainer 看效果')"
+    Print ''
+}
+
+function Set-Frame($state, [string]$slug) {
+    $slug = $slug.Trim()
+    $found = $Frames | Where-Object { $_.slug -eq $slug } | Select-Object -First 1
+    if (-not $found) { Print (Color '38;5;196' "Unknown frame slug: $slug"); return }
+    $unlocked = if ($state.unlocked_frames) { @($state.unlocked_frames) } else { @('gold') }
+    if ($unlocked -notcontains $slug) { Print (Color '38;5;196' "尚未解鎖此邊框: $($found.name_zh) — $($found.desc)"); return }
+    $state.current_frame = $slug
+    Print "  $(Color '38;5;82' '✓') 已套用邊框：$(Color $found.color $found.name_zh)"
+}
+
+$Titles = @(
+    @{ slug='newbie';        name_zh='新人訓練家';   icon='🌱'; color='38;5;82';    desc='第一次 pull';                 check={ param($s) [int]$s.stats.pulls_total -ge 1 } }
+    @{ slug='collector-50';  name_zh='收藏家';       icon='⚡'; color='38;5;220';   desc='圖鑑收集到 50 隻';            check={ param($s) (Count-Caught $s) -ge 50 } }
+    @{ slug='collector-100'; name_zh='完美收藏家';   icon='💎'; color='1;38;5;51';  desc='圖鑑收集到 100 隻';           check={ param($s) (Count-Caught $s) -ge 100 } }
+    @{ slug='collector-151'; name_zh='圖鑑大師';     icon='👑'; color='1;38;5;220'; desc='圖鑑全收集 (151/151)';         check={ param($s) (Count-Caught $s) -ge 151 } }
+    @{ slug='hr-owner';      name_zh='神獸持有者';   icon='✶'; color='1;38;5;213';  desc='收到第 1 隻 HR';              check={ param($s) Check-AnyOwnedHR $s } }
+    @{ slug='shiny-hunter';  name_zh='閃光獵人';     icon='✦'; color='1;38;5;220';  desc='累計 5 隻 shiny';             check={ param($s) [int]$s.stats.shinies_total -ge 5 } }
+    @{ slug='gym-master';    name_zh='道館征服者';   icon='◆'; color='1;38;5;208';  desc='打贏 8 個道館';               check={ param($s) ($s.gyms_beaten -and @($s.gyms_beaten).Count -ge 8) } }
+    @{ slug='evolution-master'; name_zh='進化大師';  icon='↑'; color='38;5;141';    desc='累計 10 次 evolve';           check={ param($s) [int]$s.stats.evolutions_done -ge 10 } }
+    @{ slug='wallet-king';   name_zh='富甲一方';     icon='💰'; color='1;38;5;226'; desc='coins 歷史最高 ≥ 500';        check={ param($s) [int]$s.stats.coins_peak -ge 500 } }
+    @{ slug='champion';      name_zh='寶可夢冠軍';   icon='🏆'; color='1;38;5;196'; desc='擊敗冠軍';                    check={ param($s) ($s.elite_beaten -and ($s.elite_beaten -contains 5)) } }
+)
+
+function Render-Title([string]$slug) {
+    foreach ($t in $Titles) {
+        if ($t.slug -eq $slug) {
+            return (Color $t.color "$($t.icon) $($t.name_zh)")
+        }
+    }
+    return ''
+}
+
+function Check-Titles($state) {
+    if (-not $state.unlocked_titles) { $state.unlocked_titles = @() }
+    if ($state.unlocked_titles -isnot [array]) { $state.unlocked_titles = @($state.unlocked_titles) }
+    $newly = @()
+    foreach ($t in $Titles) {
+        if ($state.unlocked_titles -contains $t.slug) { continue }
+        $ok = & $t.check $state
+        if ($ok) {
+            $state.unlocked_titles += $t.slug
+            $newly += $t.slug
+        }
+    }
+    return $newly
+}
+
+function Show-Titles($state) {
+    Print ''
+    Print (Bold "=== 稱號收集 ===")
+    Print ''
+    $unlocked = if ($state.unlocked_titles) { @($state.unlocked_titles) } else { @() }
+    $cur = if ($state.current_title) { [string]$state.current_title } else { '' }
+    foreach ($t in $Titles) {
+        $owned = $unlocked -contains $t.slug
+        $equip = ($cur -eq $t.slug)
+        $marker = if ($equip) { Color '1;38;5;226' '◉' } elseif ($owned) { Color '38;5;82' '✓' } else { Color '38;5;238' '·' }
+        $row = if ($owned) { (Color $t.color "$($t.icon) $($t.name_zh)") } else { Dim "$($t.icon) $($t.name_zh)" }
+        $note = if ($equip) { Color '1;38;5;226' ' [equipped]' } else { '' }
+        Print "  $marker $row$note  $(Dim $t.desc)"
+    }
+    Print ''
+    $slugList = ($Titles | ForEach-Object { $_.slug }) -join ', '
+    Print "  $(Dim '/gacha title set <slug> · /gacha title clear')"
+    Print "  $(Dim "slugs: $slugList")"
+    Print ''
+}
+
+function Set-Title($state, [string]$slug) {
+    $slug = $slug.Trim()
+    if ($slug -eq '' -or $slug -eq 'clear' -or $slug -eq 'none') {
+        $state.current_title = $null
+        Print "  $(Color '38;5;82' '✓') 已取消稱號顯示。"
+        return
+    }
+    $found = $Titles | Where-Object { $_.slug -eq $slug } | Select-Object -First 1
+    if (-not $found) { Print (Color '38;5;196' "Unknown title slug: $slug"); return }
+    $unlocked = if ($state.unlocked_titles) { @($state.unlocked_titles) } else { @() }
+    if ($unlocked -notcontains $slug) { Print (Color '38;5;196' "尚未解鎖此稱號: $($found.name_zh) — $($found.desc)"); return }
+    $state.current_title = $slug
+    Print "  $(Color '38;5;82' '✓') 已配戴稱號：$(Render-Title $slug)"
+}
+
 function Count-Caught($state) {
     $n = 0
     foreach ($k in $state.owned.Keys) {
@@ -549,7 +710,7 @@ function Get-RandomIdInRarity-Themed([string]$rarity) {
             $p = $Dex[[string]$id]
             if ($p.type1 -eq $theme.type -or $p.type2 -eq $theme.type) { $themedIds += [int]$id }
         }
-        if ($themedIds.Count -gt 0 -and (Get-Random -Maximum 100) -lt 30) {
+        if ($themedIds.Count -gt 0 -and (Get-Random -Maximum 100) -lt 50) {
             return [int]$themedIds[(Get-Random -Maximum $themedIds.Count)]
         }
     }
@@ -568,7 +729,7 @@ function Show-Event {
     }
     $glyph = Color $TypeColor[$theme.type] "$($theme.glyph)"
     Print "  $glyph $(Color '1;38;5;220' $theme.name)  $(Dim "($($theme.day))")"
-    Print "  $(Dim "30% 機率將 pull 結果重抽到") $(Color $TypeColor[$theme.type] $theme.type.ToUpper())$(Dim " 屬性的同 rarity 寶可夢。")"
+    Print "  $(Color '1;38;5;226' '★ PU 池：') $(Color $TypeColor[$theme.type] $theme.type.ToUpper()) $(Dim "屬性 ×2 倍率（50% 機率定向到此屬性同 rarity 寶可夢）。")"
     $next = [DateTime]::Now.Date.AddDays(1)
     $rem = $next - [DateTime]::Now
     Print "  $(Dim "下一輪：$($next.ToString('yyyy-MM-dd')) (剩 $([Math]::Floor($rem.TotalHours))h$($rem.Minutes)m)")"
@@ -690,6 +851,17 @@ function Load-State {
     if (-not $state.stats.Contains('stones_used'))       { $state.stats.stones_used = 0 }
     if (-not $state.stats.Contains('master_balls_used')) { $state.stats.master_balls_used = 0 }
     if (-not $state.stats.Contains('coins_peak'))        { $state.stats.coins_peak = [int]$state.coins }
+    # Batch 8: pity counter — pulls since last R (or HR). 30 dry pulls = next R forced.
+    if (-not $state.stats.Contains('pity_pulls_since_R')) { $state.stats.pity_pulls_since_R = 0 }
+    # Batch 8: title system (collected display badge equipped on trainer card)
+    if (-not $state.Contains('unlocked_titles') -or $null -eq $state.unlocked_titles) { $state.unlocked_titles = @() }
+    if ($state.unlocked_titles -isnot [array]) { $state.unlocked_titles = @($state.unlocked_titles) }
+    if (-not $state.Contains('current_title')) { $state.current_title = $null }
+    # Batch 8: trainer card frame cosmetic (default gold always unlocked)
+    if (-not $state.Contains('unlocked_frames') -or $null -eq $state.unlocked_frames) { $state.unlocked_frames = @('gold') }
+    if ($state.unlocked_frames -isnot [array]) { $state.unlocked_frames = @($state.unlocked_frames) }
+    if (-not ($state.unlocked_frames -contains 'gold')) { $state.unlocked_frames = @('gold') + $state.unlocked_frames }
+    if (-not $state.Contains('current_frame') -or [string]::IsNullOrWhiteSpace($state.current_frame)) { $state.current_frame = 'gold' }
     # coins_peak high-water: bump whenever we see a higher current balance.
     if ([int]$state.coins -gt [int]$state.stats.coins_peak) { $state.stats.coins_peak = [int]$state.coins }
     return $state
@@ -1008,6 +1180,9 @@ function Show-Status($state) {
     Print "  $(Bold (Color '38;5;220' "$coins coins"))"
     Print "  $(Dim "Dex $caught/$dexTotal ($pct%) $DOT Shiny $shinyTotal $DOT Pulls $pulls")"
     Print "  $(Dim "Evolutions $evols $DOT Trades $trades")"
+    $pity = [int]$state.stats.pity_pulls_since_R
+    $pityCol = if ($pity -ge 25) { '38;5;220' } elseif ($pity -ge 15) { '38;5;208' } else { '38;5;245' }
+    Print "  $(Color $pityCol "保底 $pity/30") $(Dim '·') $(Dim '戰力') $(Color '1;38;5;208' (Get-PowerLevel $state))"
 
     if ($state.buddy -and $state.buddy.id) {
         $bid = [int]$state.buddy.id
@@ -1042,6 +1217,14 @@ function Pull-Pack($state, [bool]$silent = $false) {
     # Pool does not exclude already-owned — duplicates are expected and count toward
     # multi-copy team slots (you can field up to N copies of #X if you own N).
     $rar = Get-RandomRarity
+    # Pity: 30 dry pulls (no R+) forces the next roll to R. Counter resets on any R/HR.
+    $pity = [int]$state.stats.pity_pulls_since_R
+    if ($rar -ne 'R' -and $rar -ne 'HR' -and $pity -ge 30) { $rar = 'R' }
+    if ($rar -eq 'R' -or $rar -eq 'HR') {
+        $state.stats.pity_pulls_since_R = 0
+    } else {
+        $state.stats.pity_pulls_since_R = $pity + 1
+    }
     $id = Get-RandomIdInRarity-Themed $rar
     $sh = Roll-Shiny
     $cards = @(@{ id = $id; shiny = $sh; rarity = $rar })
@@ -1110,7 +1293,12 @@ function Pull-Pack($state, [bool]$silent = $false) {
         $nameCol = if ($c.shiny) { Gold $poke.name_zh } else { Color '38;5;255' $poke.name_zh }
         $enName = "$ESC[2m($($poke.name_en))$ESC[0m"
         $newTag = if ($newSet[[string]$c.id]) { Color '38;5;226' ' NEW' } else { '' }
-        Print "  $badge  $glyph #$('{0:D3}' -f $poke.id) $nameCol $enName$newTag"
+        $banner = Get-DailyTheme
+        $puTag = ''
+        if ($banner -and ($poke.type1 -eq $banner.type -or $poke.type2 -eq $banner.type)) {
+            $puTag = ' ' + (Color '1;38;5;226' '★PU')
+        }
+        Print "  $badge  $glyph #$('{0:D3}' -f $poke.id) $nameCol $enName$newTag$puTag"
 
         # Shiny fanfare
         if ($c.shiny) {
@@ -1404,6 +1592,8 @@ function Show-Team($state) {
         }
         Print "  $tag $glyph #$('{0:D3}' -f $id) $name$copyLabel $(Dim "($($p.name_en))") $lvlTag"
     }
+    Print ''
+    Print "  $(Dim '戰力:') $(Color '1;38;5;208' (Get-PowerLevel $state)) $(Dim '(BST × LV / 100 + badges × 50)')"
     Print ''
     Print "  $(Dim '/gacha team add <id> | remove <id> | move <id> <pos> | /gacha buddy <id> (switch leader)')"
     Print ''
@@ -1706,42 +1896,75 @@ function Show-Gyms($state) {
     Print ''
 }
 
+# 7-day rotating check-in calendar. Streak wraps every 7 days (D7 → D1).
+# Items reward keys must exist in $Items. Coin grants stack on top of the item.
+$CheckinRewards = @(
+    @{ day=1; coin=5;   item=$null         },
+    @{ day=2; coin=10;  item=$null         },
+    @{ day=3; coin=15;  item='great-ball'  },
+    @{ day=4; coin=20;  item=$null         },
+    @{ day=5; coin=30;  item='ultra-ball'  },
+    @{ day=6; coin=50;  item=$null         },
+    @{ day=7; coin=100; item='master-ball' }
+)
+function Get-CheckinDay([int]$streak) {
+    if ($streak -le 0) { return 1 }
+    return (($streak - 1) % 7) + 1
+}
+function Render-CheckinCalendar($state, [int]$todayDay, [bool]$claimedToday) {
+    # Renders a 7-cell row: each cell shows day + reward icon. Today highlighted.
+    foreach ($r in $CheckinRewards) {
+        $isToday = ($r.day -eq $todayDay)
+        $isPast = ($r.day -lt $todayDay) -or ($claimedToday -and $r.day -eq $todayDay)
+        $marker = if ($isPast) { '✓' } elseif ($isToday) { '◉' } else { '·' }
+        $itemGlyph = if ($r.item -and $Items.Contains($r.item)) { (Color $Items[$r.item].color $Items[$r.item].glyph) } else { ' ' }
+        $col = if ($isToday -and -not $claimedToday) { '1;38;5;226' } elseif ($isPast) { '38;5;82' } else { '38;5;245' }
+        $cell = (Color $col "D$($r.day)") + ' ' + (Color $col $marker) + ' ' + (Color $col "+$($r.coin)") + $itemGlyph
+        Print "  $cell"
+    }
+}
+
 function Claim-Daily($state) {
     $nowEp = [int]([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())
     $lastEp = if ($state.last_daily_ep) { [int]$state.last_daily_ep } else { 0 }
     $hoursSince = if ($lastEp -gt 0) { [Math]::Floor(($nowEp - $lastEp) / 3600.0) } else { 99 }
+    $oldStreak = [int]$state.daily_streak
+
     if ($hoursSince -lt 24) {
         $waitH = 24 - $hoursSince
+        $todayDay = Get-CheckinDay $oldStreak
         Print ''
-        Print "  $(Color '38;5;245' '冷卻中。')再 $(Color '1;38;5;220' "$waitH 小時") 才能領下一次每日獎勵。"
-        Print "  $(Dim "目前 daily streak: $([int]$state.daily_streak)")"
+        Print (Bold "=== 7 日簽到日曆 ===")
+        Print ''
+        Render-CheckinCalendar $state $todayDay $true
+        Print ''
+        Print "  $(Color '38;5;245' '今日已領。')下一輪：$(Color '1;38;5;220' "$waitH 小時後") 開放 D$([int](Get-CheckinDay ($oldStreak + 1)))。"
+        Print "  $(Dim "目前連續簽到 streak: $oldStreak")"
         Print ''
         return
     }
-    # If user missed a day (>48h since last claim), streak resets to 1; otherwise +1
-    $oldStreak = [int]$state.daily_streak
+
+    # >48h since last claim → broke streak, restart at D1. Otherwise streak+1.
     $newStreak = if ($hoursSince -ge 48 -or $lastEp -eq 0) { 1 } else { $oldStreak + 1 }
-    # Coin reward scales with streak: 5 base + min(streak, 7) bonus, so day 7+ gives 12 coin
-    $coinReward = 5 + [Math]::Min($newStreak, 7)
-    $state.coins = [int]$state.coins + $coinReward
+    $todayDay = Get-CheckinDay $newStreak
+    $reward = $CheckinRewards[$todayDay - 1]
+    $state.coins = [int]$state.coins + [int]$reward.coin
     $state.last_daily_ep = $nowEp
     $state.daily_streak = $newStreak
+
     Print ''
-    Print (Bold "=== Daily Login Bonus ===")
+    Print (Bold "=== 7 日簽到日曆 ===")
     Print ''
-    Print "  $(Color '1;38;5;220' "+$coinReward coin")  $(Dim "(base 5 + streak bonus $([Math]::Min($newStreak, 7)))")"
-    # On streak milestones, also drop a free item
-    $bonusItem = $null
-    if ($newStreak -eq 7)  { $bonusItem = 'great-ball' }
-    if ($newStreak -eq 14) { $bonusItem = 'ultra-ball' }
-    if ($newStreak -eq 30) { $bonusItem = 'master-ball' }
-    if ($bonusItem) {
-        Add-BagItem $state $bonusItem 1
-        $it = $Items[$bonusItem]
-        $g = Color $it.color "$($it.glyph)"
-        Print "  $(Color '1;38;5;82' '★ Streak milestone:') $g $(Color '1;38;5;255' "$($it.name_zh) × 1") $(Dim '(免費獎勵)')"
+    Render-CheckinCalendar $state $todayDay $true
+    Print ''
+    Print "  $(Color '1;38;5;220' "+$($reward.coin) coin") $(Dim "(D$todayDay)")"
+    if ($reward.item -and $Items.Contains($reward.item)) {
+        Add-BagItem $state $reward.item 1
+        $it = $Items[$reward.item]
+        Print "  $(Color $it.color $it.glyph) $(Color '1;38;5;255' "$($it.name_zh) × 1") $(Dim '(D'+ $todayDay +' 獎勵)')"
     }
-    Print "  $(Dim "Daily streak: $oldStreak → $newStreak.  Coins now: $([int]$state.coins).")"
+    $streakNote = if ($newStreak -eq 1 -and $oldStreak -gt 1) { Color '38;5;196' "(streak 中斷，從 D1 重啟)" } else { Dim "streak $oldStreak → $newStreak" }
+    Print "  $streakNote $(Dim ' · Coins now:') $(Color '1;38;5;220' "$([int]$state.coins)")"
     Print ''
 }
 
@@ -2452,7 +2675,7 @@ function Show-Trainer($state) {
     $T_LB2 = [string][char]0x255A; $T_RB2 = [string][char]0x255D
     $T_HZ2 = [string][char]0x2550; $T_VT2 = [string][char]0x2551
     $W = 60   # inner content width — accommodates full team (6 pokemon glyph+id)
-    $fc = '38;5;220'
+    $fc = Get-FrameColor $state
     $top = (Color $fc "$T_LT2$($T_HZ2 * 3)") + (Color '1;38;5;226' ' TRAINER ') + (Color $fc "$($T_HZ2 * ($W - 12))$T_RT2")
     $bot = Color $fc "$T_LB2$($T_HZ2 * $W)$T_RB2"
     $blank = (Color $fc $T_VT2) + (' ' * $W) + (Color $fc $T_VT2)
@@ -2469,6 +2692,9 @@ function Show-Trainer($state) {
     Print $top
     Print $blank
     Print (Frame-Row 'NAME' $name $W)
+    if ($state.current_title) {
+        Print (Frame-Row 'TITLE' (Render-Title $state.current_title) $W)
+    }
     Print (Frame-Row 'SESSIONS' "$sessions" $W)
     Print (Frame-Row 'COINS' "$(Color '1;38;5;220' "$coins")" $W)
     Print (Frame-Row 'DEX' "$caught/$dexTotal $(Dim "($dexPct%)")" $W)
@@ -2481,6 +2707,7 @@ function Show-Trainer($state) {
     Print (Frame-Row 'BUDDY' $buddyLine $W)
     Print (Frame-Row 'TEAM' $teamLine $W)
     Print (Frame-Row 'BADGES' $badgesLine $W)
+    Print (Frame-Row 'POWER' "$(Color '1;38;5;208' (Get-PowerLevel $state))" $W)
     Print $blank
     Print $bot
     Print ''
@@ -2783,7 +3010,11 @@ function Show-Help {
     Print "  /gacha champion      final fight vs Blue (unlocked after Elite Four cleared, but not strictly gated)"
     Print "  /gacha trainer png   export trainer card to PNG at ~/.claude/exports/trainer-<ts>.png"
     Print "  /gacha achievements  show all 21 milestone achievements + earned dates"
-    Print "  /gacha event         show today's themed pull bonus (rotates by weekday)"
+    Print "  /gacha event         show today's themed PU pool (×2 for daily theme type)"
+    Print "  /gacha titles        show all 10 collectable titles (auto-unlock by milestones)"
+    Print "  /gacha title <slug>  equip an unlocked title (shown on trainer card)"
+    Print "  /gacha frames        show all 6 trainer-card frame skins"
+    Print "  /gacha frame <slug>  equip an unlocked frame skin"
     Print "  /gacha dex           Pokedex grid (every species ever caught)"
     Print "  /gacha bag           current bag (copies you still hold)"
     Print "  /gacha album         show sprite art for every species in bag"
@@ -2912,6 +3143,25 @@ try {
         Rename-Pokemon $state $id $nick
     }
     'daily'   { Claim-Daily $state }
+    'titles'  { Show-Titles $state }
+    'title'   {
+        if ([string]::IsNullOrWhiteSpace($Arg)) { Show-Titles $state; break }
+        if ($Arg -eq 'set') {
+            if ([string]::IsNullOrWhiteSpace($Arg2)) { Print "Usage: title set <slug>"; break }
+            Set-Title $state $Arg2
+        } elseif ($Arg -eq 'clear' -or $Arg -eq 'none') {
+            Set-Title $state ''
+        } else {
+            # Allow `title <slug>` as shortcut for `title set <slug>`
+            Set-Title $state $Arg
+        }
+    }
+    'frames'  { Show-Frames $state }
+    'frame'   {
+        if ([string]::IsNullOrWhiteSpace($Arg)) { Show-Frames $state; break }
+        if ($Arg -eq 'set' -and -not [string]::IsNullOrWhiteSpace($Arg2)) { Set-Frame $state $Arg2; break }
+        Set-Frame $state $Arg
+    }
     'elite'   {
         if ([string]::IsNullOrWhiteSpace($Arg)) { Show-Elite $state; break }
         $n = 0
@@ -2944,6 +3194,30 @@ if ($newAchv.Count -gt 0) {
         $a = $Achievements | Where-Object { $_.slug -eq $slug } | Select-Object -First 1
         if ($a) {
             Print "$(Color '1;38;5;220' '★ 成就解鎖！')  $(Color '1;38;5;255' $a.name_zh)  $(Dim $a.desc)"
+        }
+    }
+    Print ''
+}
+# Title check: same toast pattern. Doesn't auto-equip — user picks via /gacha title set.
+$newTitles = Check-Titles $state
+if ($newTitles.Count -gt 0) {
+    Print ''
+    foreach ($slug in $newTitles) {
+        $t = $Titles | Where-Object { $_.slug -eq $slug } | Select-Object -First 1
+        if ($t) {
+            Print "$(Color '1;38;5;226' '★ 稱號解鎖！')  $(Render-Title $slug)  $(Dim "/gacha title set $slug 來配戴")"
+        }
+    }
+    Print ''
+}
+# Frame unlock toasts (same pattern; doesn't auto-equip)
+$newFrames = Check-Frames $state
+if ($newFrames.Count -gt 0) {
+    Print ''
+    foreach ($slug in $newFrames) {
+        $f = $Frames | Where-Object { $_.slug -eq $slug } | Select-Object -First 1
+        if ($f) {
+            Print "$(Color '1;38;5;226' '★ 邊框解鎖！')  $(Color $f.color $f.name_zh)  $(Dim "/gacha frame $slug 套用")"
         }
     }
     Print ''
