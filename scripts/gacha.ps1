@@ -748,7 +748,11 @@ function Save-State($state) {
             $olds[5..($olds.Count - 1)] | ForEach-Object { try { Remove-Item -Path $_.FullName -Force } catch {} }
         }
     }
-    $state | ConvertTo-Json -Depth 12 | Out-File -FilePath $StateFile -Encoding utf8 -Force
+    # Atomic write via .tmp + Move-Item so concurrent readers never see a
+    # 0-byte truncate window (the issue that caused the state-wipe earlier).
+    $tmpFile = "$StateFile.tmp"
+    $state | ConvertTo-Json -Depth 12 | Out-File -FilePath $tmpFile -Encoding utf8 -Force
+    Move-Item -Path $tmpFile -Destination $StateFile -Force
 }
 
 # --- Owned-collection helpers ---

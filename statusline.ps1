@@ -164,10 +164,21 @@ if ($gachaState) {
             $repelActive = $repelLeft -gt 0
             if ($repelActive) { $fresh.repel_sessions = $repelLeft - 1 }
 
+            # Encounter expiry: a pending wild that's >12h old auto-flees. Without this,
+            # an uncaught encounter sits forever and blocks new spawns (the spawn gate
+            # is "-not $hasEncounter"). 12h matches Pokemon Center "they got tired and
+            # left" vibe and is long enough to survive an overnight idle.
+            if ($fresh.encounter -and $fresh.encounter.id -and $fresh.encounter.spawned_at_ep) {
+                $encAge = $nowEp - [int]$fresh.encounter.spawned_at_ep
+                if ($encAge -gt (12 * 3600)) { $fresh.encounter = $null }
+            }
+
             # Wild encounter roll: 3% per new session. Only if no encounter pending AND no repel.
             # Pyramid pool C 60 / U 25 / R 12 / HR 3 — HR (legendaries) ONLY appear here.
             # Bumped from 1% to 3% in same commit as the pool-iteration bug fix: at 1%
             # plus the prior bug, the user had ~677 sessions with zero encounters.
+            # Re-check $hasEncounter AFTER the expiry block above so a freshly-expired
+            # slot can immediately host a new spawn.
             $hasEncounter = ($fresh.encounter -and $fresh.encounter.id -and [int]$fresh.encounter.id -gt 0)
             if (-not $repelActive -and -not $hasEncounter -and (Get-Random -Maximum 100) -lt 3) {
                 $rRoll = Get-Random -Maximum 100
@@ -210,7 +221,15 @@ if ($gachaState) {
         foreach ($e in $fresh.cost_log) { if ([int]$e.ts -ge $weekAgo) { $kept += $e } }
         $fresh.cost_log = $kept
 
-        try { $fresh | ConvertTo-Json -Depth 12 | Out-File -FilePath $gachaStateFile -Encoding utf8 -Force } catch {}
+        # Atomic write: serialize to .tmp first, then Move-Item to replace. This
+        # closes the 0-byte race window where Out-File -Force truncates and a
+        # concurrent reader (or a misbehaving external script bypassing the
+        # mutex) sees an empty file. Move-Item is atomic on the same volume.
+        try {
+            $tmpFile = "$gachaStateFile.tmp"
+            $fresh | ConvertTo-Json -Depth 12 | Out-File -FilePath $tmpFile -Encoding utf8 -Force
+            Move-Item -Path $tmpFile -Destination $gachaStateFile -Force
+        } catch {}
         } finally {
             Release-StateLock $__slMutex
         }
