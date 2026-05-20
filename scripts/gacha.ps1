@@ -2608,10 +2608,10 @@ function Trade-Dupes($state) {
     Print ''
     # List the 5 dupes being given up, one at a time, with a small pause so the
     # player feels the cost. Each name colored by its own type for flavor.
-    foreach ($pid in $picked) {
-        $p = $Dex[[string]$pid]
+    foreach ($pkId in $picked) {
+        $p = $Dex[[string]$pkId]
         $g = Color $TypeColor[$p.type1] "$($TypeGlyph[$p.type1])"
-        Print "  $(Dim '↪') $g #$('{0:D3}' -f [int]$pid) $(Color '38;5;245' $p.name_zh)"
+        Print "  $(Dim '↪') $g #$('{0:D3}' -f [int]$pkId) $(Color '38;5;245' $p.name_zh)"
         Start-Sleep -Milliseconds 250
     }
     Print ''
