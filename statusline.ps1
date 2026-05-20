@@ -583,8 +583,15 @@ if ($visibleSprites.Count -ge 1) {
             $isLeader = ($j -eq 0)
             # Leader shiny check via buddy cache; companions skip shiny check for now
             $shiny = $false
-            if ($isLeader -and $gachaState -and $gachaState.buddy) { $shiny = [bool]$gachaState.buddy.shiny }
-            $nameTxt = if ($shiny) { Gold $name_zh } elseif ($isLeader) { "$ESC[1;38;5;255m$name_zh$ESC[0m" } else { Color '38;5;255' $name_zh }
+            $nick = $null
+            if ($isLeader -and $gachaState -and $gachaState.buddy) {
+                $shiny = [bool]$gachaState.buddy.shiny
+                if ($gachaState.buddy.PSObject.Properties.Name -contains 'nickname' -and $gachaState.buddy.nickname) {
+                    $nick = [string]$gachaState.buddy.nickname
+                }
+            }
+            $displayName = if ($nick) { $nick } else { $name_zh }
+            $nameTxt = if ($shiny) { Gold $displayName } elseif ($isLeader) { "$ESC[1;38;5;255m$displayName$ESC[0m" } else { Color '38;5;255' $displayName }
             $letterTag = if ($j -lt $slotLetter.Count -and $slotLetter[$j]) { ' ' + (Color '1;38;5;226' "[$($slotLetter[$j])]") } else { '' }
             $cell = "$glyph #$('{0:D3}' -f $id) $nameTxt$letterTag"
             $cellW = Get-VisibleWidth $cell

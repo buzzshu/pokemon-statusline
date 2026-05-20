@@ -314,31 +314,50 @@ $StoneEvolutions = @{
     133 = 'water-stone'    # Eevee → Vaporeon (default; thunder-stone path = same dest since dex only lists one)
 }
 
-# --- Achievement definitions (21 milestones) ---
+# --- Achievement definitions (40 milestones) ---
 # Each entry: slug (unique key in state.achievements), name_zh (display), desc (hint),
 # kind (group for display ordering).
 $Achievements = @(
     @{ slug='first-pull';     name_zh='初次見面';   desc='完成你的第一次 pull';                       kind='pull' }
     @{ slug='pull-10';        name_zh='十抽達人';   desc='累計 10 次 pull';                          kind='pull' }
+    @{ slug='pull-50';        name_zh='五十抽達人'; desc='累計 50 次 pull';                          kind='pull' }
     @{ slug='pull-100';       name_zh='百抽達人';   desc='累計 100 次 pull';                         kind='pull' }
     @{ slug='first-hr';       name_zh='首見傳說';   desc='收集到第一隻 HR (神獸)';                   kind='collection' }
     @{ slug='first-shiny';    name_zh='首見閃光';   desc='抓到第一隻 shiny 寶可夢';                  kind='collection' }
     @{ slug='shiny-5';        name_zh='閃閃發亮';   desc='累計 5 隻 shiny';                          kind='collection' }
+    @{ slug='shiny-10';       name_zh='閃光獵人';   desc='累計 10 隻 shiny';                         kind='collection' }
+    @{ slug='dex-10';         name_zh='入門訓練家'; desc='圖鑑完成度 10% (15/151)';                  kind='dex' }
     @{ slug='dex-25';         name_zh='新手訓練家'; desc='圖鑑完成度 25% (38/151)';                  kind='dex' }
     @{ slug='dex-50';         name_zh='資深訓練家'; desc='圖鑑完成度 50% (76/151)';                  kind='dex' }
     @{ slug='dex-100';        name_zh='大師訓練家'; desc='圖鑑完成度 100% (151/151)';                kind='dex' }
+    @{ slug='type-collector-5'; name_zh='屬性收集家'; desc='圖鑑涵蓋至少 5 個不同屬性';              kind='dex' }
+    @{ slug='type-collector-9'; name_zh='屬性大師';   desc='圖鑑涵蓋至少 9 個不同屬性';              kind='dex' }
     @{ slug='all-starters';   name_zh='御三家齊全'; desc='同時擁有妙蛙種子 / 小火龍 / 傑尼龜';       kind='collection' }
     @{ slug='all-fossils';    name_zh='化石獵人';   desc='擁有菊石獸 / 化石盔 / 化石翼龍';           kind='collection' }
     @{ slug='all-legendary';  name_zh='神話收藏家'; desc='集滿急凍鳥 / 閃電鳥 / 火焰鳥 / 超夢 / 夢幻'; kind='collection' }
     @{ slug='first-evolve';   name_zh='初次進化';   desc='第一次 /gacha evolve 成功';                kind='train' }
+    @{ slug='evolve-5';       name_zh='進化達人';   desc='累計 5 次 evolve';                          kind='train' }
+    @{ slug='evolve-stone';   name_zh='石頭達人';   desc='第一次用 stone 進化';                       kind='train' }
+    @{ slug='buddy-l10';      name_zh='牽絆 LV 10'; desc='Buddy 練到 LV. 10';                          kind='train' }
     @{ slug='buddy-l25';      name_zh='培育達人';   desc='Buddy 練到 LV. 25 (exp 300)';              kind='train' }
+    @{ slug='buddy-l36';      name_zh='進化達標';   desc='Buddy 練到 LV. 36 (大多數第二進化條件)';   kind='train' }
     @{ slug='buddy-l50';      name_zh='培育大師';   desc='Buddy 練到 LV. 50 (exp 1225)';             kind='train' }
     @{ slug='triple-clone';   name_zh='複製戰隊';   desc='Team 同時有 3 隻同 dex 寶可夢 [A][B][C]';  kind='team' }
+    @{ slug='team-full';      name_zh='滿員出擊';   desc='Team 達到 6/6 員';                          kind='team' }
+    @{ slug='team-types-3';   name_zh='多元戰隊';   desc='Team 同時涵蓋至少 3 種屬性';                kind='team' }
     @{ slug='first-trade';    name_zh='首次交易';   desc='第一次 /gacha trade 完成';                  kind='train' }
+    @{ slug='trade-5';        name_zh='交易達人';   desc='累計 5 次 trade';                           kind='train' }
     @{ slug='gym-1';          name_zh='道館初勝';   desc='打贏第一個道館';                            kind='battle' }
+    @{ slug='gym-2';          name_zh='雙冠';       desc='打贏 2 個道館';                             kind='battle' }
     @{ slug='gym-4';          name_zh='半冠王';     desc='打贏 4 個道館';                             kind='battle' }
+    @{ slug='gym-6';          name_zh='六冠';       desc='打贏 6 個道館';                             kind='battle' }
     @{ slug='gym-all';        name_zh='全道館征服'; desc='打贏全部 8 個 Gen 1 道館';                  kind='battle' }
+    @{ slug='streak-5';       name_zh='連勝起步';   desc='戰鬥最高連勝 5 場';                          kind='battle' }
     @{ slug='streak-10';      name_zh='戰鬥不敗';   desc='戰鬥最高連勝 10 場';                        kind='battle' }
+    @{ slug='streak-20';      name_zh='不敗傳說';   desc='戰鬥最高連勝 20 場';                        kind='battle' }
+    @{ slug='shop-first';     name_zh='初次採購';   desc='第一次 /gacha buy 完成';                    kind='item' }
+    @{ slug='master-ball-use'; name_zh='大師球使用者'; desc='用過 1 顆 master ball 抓寶可夢';         kind='item' }
+    @{ slug='wallet-500';     name_zh='富甲一方';   desc='累積過 500 coin (歷史最高)';                kind='item' }
 )
 
 function Count-Caught($state) {
@@ -369,29 +388,67 @@ function Check-TripleClone($state) {
     foreach ($k in $counts.Keys) { if ($counts[$k] -ge 3) { return $true } }
     return $false
 }
+function Count-DexTypes($state) {
+    # How many distinct type1 across ever-caught species
+    $set = @{}
+    foreach ($k in $state.owned.Keys) {
+        if ($null -ne $state.owned[$k].first_caught -and $Dex.ContainsKey($k)) {
+            $set[$Dex[$k].type1] = $true
+        }
+    }
+    return $set.Count
+}
+function Count-TeamTypes($state) {
+    if (-not $state.team) { return 0 }
+    $set = @{}
+    foreach ($t in $state.team) {
+        $tid = [int]$t.id
+        if ($Dex.ContainsKey([string]$tid)) { $set[$Dex[[string]$tid].type1] = $true }
+    }
+    return $set.Count
+}
 function Test-Achievement-Earned($state, [string]$slug) {
     switch ($slug) {
-        'first-pull'    { return ([int]$state.stats.pulls_total -ge 1) }
-        'pull-10'       { return ([int]$state.stats.pulls_total -ge 10) }
-        'pull-100'      { return ([int]$state.stats.pulls_total -ge 100) }
-        'first-hr'      { return (Check-AnyOwnedHR $state) }
-        'first-shiny'   { return ([int]$state.stats.shinies_total -ge 1) }
-        'shiny-5'       { return ([int]$state.stats.shinies_total -ge 5) }
-        'dex-25'        { return ((Count-Caught $state) -ge 38) }
-        'dex-50'        { return ((Count-Caught $state) -ge 76) }
-        'dex-100'       { return ((Count-Caught $state) -ge 151) }
-        'all-starters'  { return ((Has-CaughtEver $state 1) -and (Has-CaughtEver $state 4) -and (Has-CaughtEver $state 7)) }
-        'all-fossils'   { return ((Has-CaughtEver $state 138) -and (Has-CaughtEver $state 140) -and (Has-CaughtEver $state 142)) }
-        'all-legendary' { return ((Has-CaughtEver $state 144) -and (Has-CaughtEver $state 145) -and (Has-CaughtEver $state 146) -and (Has-CaughtEver $state 150) -and (Has-CaughtEver $state 151)) }
-        'first-evolve'  { return ([int]$state.stats.evolutions_done -ge 1) }
-        'buddy-l25'     { return ($state.buddy -and (Get-Level ([int]$state.buddy.exp)) -ge 25) }
-        'buddy-l50'     { return ($state.buddy -and (Get-Level ([int]$state.buddy.exp)) -ge 50) }
-        'triple-clone'  { return (Check-TripleClone $state) }
-        'first-trade'   { return ([int]$state.stats.trades_done -ge 1) }
-        'gym-1'         { return ($state.gyms_beaten -and $state.gyms_beaten.Count -ge 1) }
-        'gym-4'         { return ($state.gyms_beaten -and $state.gyms_beaten.Count -ge 4) }
-        'gym-all'       { return ($state.gyms_beaten -and $state.gyms_beaten.Count -ge 8) }
-        'streak-10'     { return ([int]$state.battle_streak_best -ge 10) }
+        'first-pull'        { return ([int]$state.stats.pulls_total -ge 1) }
+        'pull-10'           { return ([int]$state.stats.pulls_total -ge 10) }
+        'pull-50'           { return ([int]$state.stats.pulls_total -ge 50) }
+        'pull-100'          { return ([int]$state.stats.pulls_total -ge 100) }
+        'first-hr'          { return (Check-AnyOwnedHR $state) }
+        'first-shiny'       { return ([int]$state.stats.shinies_total -ge 1) }
+        'shiny-5'           { return ([int]$state.stats.shinies_total -ge 5) }
+        'shiny-10'          { return ([int]$state.stats.shinies_total -ge 10) }
+        'dex-10'            { return ((Count-Caught $state) -ge 15) }
+        'dex-25'            { return ((Count-Caught $state) -ge 38) }
+        'dex-50'            { return ((Count-Caught $state) -ge 76) }
+        'dex-100'           { return ((Count-Caught $state) -ge 151) }
+        'type-collector-5'  { return ((Count-DexTypes $state) -ge 5) }
+        'type-collector-9'  { return ((Count-DexTypes $state) -ge 9) }
+        'all-starters'      { return ((Has-CaughtEver $state 1) -and (Has-CaughtEver $state 4) -and (Has-CaughtEver $state 7)) }
+        'all-fossils'       { return ((Has-CaughtEver $state 138) -and (Has-CaughtEver $state 140) -and (Has-CaughtEver $state 142)) }
+        'all-legendary'     { return ((Has-CaughtEver $state 144) -and (Has-CaughtEver $state 145) -and (Has-CaughtEver $state 146) -and (Has-CaughtEver $state 150) -and (Has-CaughtEver $state 151)) }
+        'first-evolve'      { return ([int]$state.stats.evolutions_done -ge 1) }
+        'evolve-5'          { return ([int]$state.stats.evolutions_done -ge 5) }
+        'evolve-stone'      { return ([int]$state.stats.stones_used -ge 1) }
+        'buddy-l10'         { return ($state.buddy -and (Get-Level ([int]$state.buddy.exp)) -ge 10) }
+        'buddy-l25'         { return ($state.buddy -and (Get-Level ([int]$state.buddy.exp)) -ge 25) }
+        'buddy-l36'         { return ($state.buddy -and (Get-Level ([int]$state.buddy.exp)) -ge 36) }
+        'buddy-l50'         { return ($state.buddy -and (Get-Level ([int]$state.buddy.exp)) -ge 50) }
+        'triple-clone'      { return (Check-TripleClone $state) }
+        'team-full'         { return ($state.team -and $state.team.Count -ge 6) }
+        'team-types-3'      { return ((Count-TeamTypes $state) -ge 3) }
+        'first-trade'       { return ([int]$state.stats.trades_done -ge 1) }
+        'trade-5'           { return ([int]$state.stats.trades_done -ge 5) }
+        'gym-1'             { return ($state.gyms_beaten -and $state.gyms_beaten.Count -ge 1) }
+        'gym-2'             { return ($state.gyms_beaten -and $state.gyms_beaten.Count -ge 2) }
+        'gym-4'             { return ($state.gyms_beaten -and $state.gyms_beaten.Count -ge 4) }
+        'gym-6'             { return ($state.gyms_beaten -and $state.gyms_beaten.Count -ge 6) }
+        'gym-all'           { return ($state.gyms_beaten -and $state.gyms_beaten.Count -ge 8) }
+        'streak-5'          { return ([int]$state.battle_streak_best -ge 5) }
+        'streak-10'         { return ([int]$state.battle_streak_best -ge 10) }
+        'streak-20'         { return ([int]$state.battle_streak_best -ge 20) }
+        'shop-first'        { return ([int]$state.stats.items_bought -ge 1) }
+        'master-ball-use'   { return ([int]$state.stats.master_balls_used -ge 1) }
+        'wallet-500'        { return ([int]$state.stats.coins_peak -ge 500) }
     }
     return $false
 }
@@ -418,7 +475,7 @@ function Show-Achievements($state) {
     Print ''
     Print (Bold "=== Achievements ($earnedCount/$total) ===")
     Print ''
-    $kindOrder = @('pull','collection','dex','train','team','battle')
+    $kindOrder = @('pull','collection','dex','train','team','battle','item')
     foreach ($k in $kindOrder) {
         $list = $Achievements | Where-Object { $_.kind -eq $k }
         if ($list.Count -eq 0) { continue }
@@ -518,10 +575,14 @@ function Get-DefaultState {
         team               = @()
         last_pull          = $null
         stats              = [ordered]@{
-            pulls_total      = 0
-            shinies_total    = 0
-            evolutions_done  = 0
-            trades_done      = 0
+            pulls_total       = 0
+            shinies_total     = 0
+            evolutions_done   = 0
+            trades_done       = 0
+            items_bought      = 0
+            stones_used       = 0
+            master_balls_used = 0
+            coins_peak        = 0
         }
     }
 }
@@ -588,6 +649,13 @@ function Load-State {
     # Batch 5: items bag. Lazy-init to empty; missing keys default to 0 on read.
     if (-not $state.Contains('items') -or $null -eq $state.items) { $state.items = [ordered]@{} }
     if (-not $state.Contains('repel_sessions')) { $state.repel_sessions = 0 }
+    # Stats counters added in batch 6 (achievements expansion). Lazy-add missing keys.
+    if (-not $state.stats.Contains('items_bought'))      { $state.stats.items_bought = 0 }
+    if (-not $state.stats.Contains('stones_used'))       { $state.stats.stones_used = 0 }
+    if (-not $state.stats.Contains('master_balls_used')) { $state.stats.master_balls_used = 0 }
+    if (-not $state.stats.Contains('coins_peak'))        { $state.stats.coins_peak = [int]$state.coins }
+    # coins_peak high-water: bump whenever we see a higher current balance.
+    if ([int]$state.coins -gt [int]$state.stats.coins_peak) { $state.stats.coins_peak = [int]$state.coins }
     return $state
 }
 
@@ -601,11 +669,15 @@ function Sync-Buddy-From-Team($state) {
     $id = [int]$slot.id
     if (-not $Dex.ContainsKey([string]$id)) { return }
     $poke = $Dex[[string]$id]
+    $slotNick = $null
+    if (($slot -is [hashtable] -or $slot -is [System.Collections.Specialized.OrderedDictionary]) -and $slot.Contains('nickname')) {
+        $slotNick = $slot.nickname
+    }
     $state.buddy = [ordered]@{
         id           = $id
         shiny        = [bool]$slot.shiny
         exp          = [int]$slot.exp
-        nickname     = $null
+        nickname     = $slotNick
         name_zh      = $poke.name_zh
         type1        = $poke.type1
         stage        = [int]$poke.stage
@@ -779,6 +851,7 @@ function Catch-Encounter($state) {
     $ballUsed = 'plain'
     if ((Get-ItemCount $state 'master-ball') -gt 0) {
         Remove-BagItem $state 'master-ball' 1 | Out-Null
+        $state.stats.master_balls_used = [int]$state.stats.master_balls_used + 1
         $rate = 1.0   # guaranteed
         $ballUsed = 'master'
     } elseif ((Get-ItemCount $state 'ultra-ball') -gt 0) {
@@ -1253,7 +1326,9 @@ function Show-Team($state) {
         $p = $Dex[[string]$id]
         $glyph = Color $TypeColor[$p.type1] "$($TypeGlyph[$p.type1])"
         $shiny = [bool]$slot.shiny
-        $name = if ($shiny) { Gold $p.name_zh } else { Color '38;5;255' $p.name_zh }
+        $nick = if (($slot -is [hashtable] -or $slot -is [System.Collections.Specialized.OrderedDictionary]) -and $slot.Contains('nickname') -and $slot.nickname) { [string]$slot.nickname } else { $null }
+        $displayName = if ($nick) { "$nick $(Dim "($($p.name_zh))")" } else { $p.name_zh }
+        $name = if ($shiny -and -not $nick) { Gold $displayName } else { Color '38;5;255' $displayName }
         $tag = if ($i -eq 0) { Color '1;38;5;226' '[LEADER]' } else { Dim "  team    " }
         $slotLvl = Get-Level ([int]$slot.exp)
         $lvlTag = "$(Color '1;38;5;82' "LV. $slotLvl") $(Dim "(exp $([int]$slot.exp))")"
@@ -1567,6 +1642,72 @@ function Show-Gyms($state) {
     Print ''
 }
 
+function Rename-Pokemon($state, [int]$id, [string]$nickname) {
+    if (-not $state.team -or $state.team.Count -eq 0) { Print (Color '38;5;196' "Team is empty."); return }
+    if (-not $Dex.ContainsKey([string]$id)) { Print (Color '38;5;196' "Unknown pokemon id: $id"); return }
+    # Pick the highest-exp slot for that id; ties → first.
+    $bestIdx = -1
+    $bestExp = -1
+    for ($i = 0; $i -lt $state.team.Count; $i++) {
+        if ([int]$state.team[$i].id -eq $id -and [int]$state.team[$i].exp -gt $bestExp) {
+            $bestExp = [int]$state.team[$i].exp
+            $bestIdx = $i
+        }
+    }
+    if ($bestIdx -lt 0) { Print (Color '38;5;196' "#$id not in team. /gacha team add $id first."); return }
+    # Strip dangerous chars; cap at 16 visible chars
+    $nick = $nickname.Trim()
+    if ($nick.Length -eq 0) {
+        # Clear nickname
+        if ($state.team[$bestIdx].PSObject.Properties.Name -contains 'nickname' -or $state.team[$bestIdx].Contains('nickname')) {
+            $state.team[$bestIdx].nickname = $null
+        }
+        Sync-Buddy-From-Team $state
+        Print "  Nickname cleared for #$id (slot $($bestIdx + 1))."
+        return
+    }
+    if ($nick.Length -gt 16) { $nick = $nick.Substring(0, 16) }
+    if ($state.team[$bestIdx] -is [hashtable] -or $state.team[$bestIdx] -is [System.Collections.Specialized.OrderedDictionary]) {
+        $state.team[$bestIdx].nickname = $nick
+    }
+    Sync-Buddy-From-Team $state
+    $p = $Dex[[string]$id]
+    $g = Color $TypeColor[$p.type1] "$($TypeGlyph[$p.type1])"
+    Print ''
+    $nickQuoted = '「' + $nick + '」'
+    Print "  $g #$('{0:D3}' -f $id) $(Color '38;5;255' $p.name_zh) (slot $($bestIdx + 1)) → 暱稱 $(Color '1;38;5;220' $nickQuoted)"
+    Print ''
+}
+
+function Show-Moves([int]$id) {
+    if (-not $Dex.ContainsKey([string]$id)) {
+        Print (Color '38;5;196' "Unknown pokemon id: $id")
+        return
+    }
+    $p = $Dex[[string]$id]
+    # Build a fake combatant so Get-Moveset can do its thing
+    $fake = @{ id = $id; type1 = $p.type1; type2 = $p.type2 }
+    $moves = Get-Moveset $fake
+    $isSig = $SignatureMoves.ContainsKey($id)
+
+    $glyph = Color $TypeColor[$p.type1] "$($TypeGlyph[$p.type1])"
+    $t2tag = if ($p.type2) { " / $($p.type2)" } else { '' }
+    Print ''
+    Print (Bold "=== Moveset: $glyph #$('{0:D3}' -f $id) $(Color '38;5;255' $p.name_zh) ===")
+    Print "  $(Dim "$($p.type1)$t2tag · stage $($p.stage)") $(if ($isSig) { Color '1;38;5;220' '[signature kit]' } else { Dim '[auto-derived]' })"
+    Print ''
+    foreach ($m in $moves) {
+        $mc = if ($TypeColor.ContainsKey($m.type)) { $TypeColor[$m.type] } else { '38;5;255' }
+        $mg = if ($TypeGlyph.ContainsKey($m.type)) { $TypeGlyph[$m.type] } else { '?' }
+        $stab = ($m.type -eq $p.type1 -or ($p.type2 -and $m.type -eq $p.type2))
+        $stabTag = if ($stab) { Color '1;38;5;220' ' STAB' } else { '' }
+        $power = [int]$m.power
+        $powerTag = if ($power -eq 0) { Color '38;5;245' 'utility' } else { "pwr $power" }
+        Print "  $(Color $mc "$mg") $(Color '38;5;255' $m.name)  $(Dim "($($m.type))")  $(Color '38;5;220' $powerTag)$stabTag"
+    }
+    Print ''
+}
+
 function Show-Theme($state) {
     $cur = if ($state.theme -and $Themes.ContainsKey([string]$state.theme)) { [string]$state.theme } else { 'gba' }
     Print ''
@@ -1675,6 +1816,7 @@ function Buy-Item($state, [string]$slug, [int]$n) {
     }
     $state.coins = [int]$state.coins - $total
     Add-BagItem $state $s $n
+    $state.stats.items_bought = [int]$state.stats.items_bought + $n
     $g = Color $it.color "$($it.glyph)"
     Print ''
     Print "  $g $(Color '1;38;5;255' "$($it.name_zh) × $n") 入手  $(Dim "(-$total coin, $(Get-ItemCount $state $s) total)")"
@@ -1760,6 +1902,7 @@ function Use-Item($state, [string]$slug) {
             }
             $hadShiny = [bool]$slot.shiny
             Remove-BagItem $state $s 1 | Out-Null
+            $state.stats.stones_used = [int]$state.stats.stones_used + 1
             Remove-Owned $state $tid 1 | Out-Null
             if ($hadShiny -and $state.owned.Contains([string]$tid) -and [int]$state.owned[[string]$tid].shiny_count -gt 0) {
                 $state.owned[[string]$tid].shiny_count = [int]$state.owned[[string]$tid].shiny_count - 1
@@ -2264,6 +2407,8 @@ function Show-Help {
     Print "  /gacha buy <slug>    buy item (e.g. rare-candy = +10 exp; great-ball = catch boost)"
     Print "  /gacha items         show your item inventory"
     Print "  /gacha use <slug>    consume item (rare-candy bumps buddy exp; great-ball auto-uses in catch)"
+    Print "  /gacha moves <id>    show a pokemon's moveset (signature kit or auto-derived from types/stage)"
+    Print "  /gacha rename <id> <nick>  give the highest-exp team slot of <id> a nickname (empty = clear)"
     Print "  /gacha achievements  show all 21 milestone achievements + earned dates"
     Print "  /gacha event         show today's themed pull bonus (rotates by weekday)"
     Print "  /gacha dex           Pokedex grid (every species ever caught)"
@@ -2374,6 +2519,18 @@ try {
     'use'     {
         if ([string]::IsNullOrWhiteSpace($Arg)) { Print "Usage: use <item-slug>"; Show-Items $state; break }
         Use-Item $state $Arg
+    }
+    'moves'   {
+        $id = 0
+        if (-not [int]::TryParse($Arg, [ref]$id)) { Print "Usage: moves <pokemon-id>"; break }
+        Show-Moves $id
+    }
+    'rename'  {
+        $id = 0
+        if (-not [int]::TryParse($Arg, [ref]$id)) { Print "Usage: rename <pokemon-id> <nickname>"; break }
+        $nick = if ($null -ne $Arg2) { [string]$Arg2 } else { '' }
+        if ($null -ne $Arg3) { $nick = "$nick $Arg3" }
+        Rename-Pokemon $state $id $nick
     }
     'gym'     {
         if ([string]::IsNullOrWhiteSpace($Arg)) { Show-Gyms $state; break }
