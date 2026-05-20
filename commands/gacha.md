@@ -11,13 +11,15 @@ The engine lives globally at `%USERPROFILE%\.claude\scripts\gacha.ps1` and reads
 
 Branch on what `$ARGUMENTS` starts with:
 
-### A. New-tab class (`pull`, `pulls <N>`, `trade`, `album`, `gallery`, `gym <N>`) → open a new Windows Terminal tab
+### A. New-tab class (`pull`, `pulls <N>`, `trade`, `catch`, `evolve <ID>`, `album`, `gallery`, `gym <N>`) → open a new Windows Terminal tab
 
-Four reasons to spawn a new tab instead of running inline:
-- `pull` / `pulls N` — Claude Code buffers stdout so the 90ms-per-line reveal animation is invisible inline.
-- `trade` — same reveal animation as pull (R reward sprite drops line-by-line at 90ms after the 5 dupes are listed).
-- `album` / `gallery` — 86+ lines of sprite art exceeds Claude Code's tool result preview and gets truncated.
-- `gym N` — turn-by-turn battle animation has 600-800ms per line; full battle is many seconds of reveal which gets buffered/truncated inline.
+All commands that **acquire / transform pokemon** spawn a tab so the reveal animation plays:
+- `pull` / `pulls N` — Claude Code buffers stdout so the 90ms-per-line sprite reveal is invisible inline.
+- `trade` — same reveal pattern (R reward sprite drops line-by-line after the 5 dupes are listed).
+- `catch` — wild encounter resolution: shake animation + sprite reveal on GOTCHA.
+- `evolve <ID>` — Evolving... → sprite of the evolved form drops line-by-line.
+- `album` / `gallery` — 86+ lines of sprite art exceeds Claude Code's tool result preview.
+- `gym N` — turn-by-turn battle animation, ~20-30s per fight.
 
 Spawn the engine in a new Windows Terminal tab so the user sees the full output live.
 
@@ -38,7 +40,14 @@ Spawn the engine in a new Windows Terminal tab so the user sees the full output 
    Start-Process wt.exe -ArgumentList $wtArgs
    ```
 
-2a. **For `pull`/`pulls`/`trade`**: poll the counter for up to 8s instead of a fixed sleep. The engine saves state IMMEDIATELY after mutation (before the ~2s sprite-reveal animation) so the counter advances within ~200ms of the child process starting. Polling makes the skill robust on slow systems and detects silent wt-spawn failures (no advance after 8s = user should retry):
+2a. **For commands with a stats counter** (poll up to 8s instead of fixed sleep — engine save-states immediately after mutation, so counter advances within ~200ms; the rest of the time is decorative animation):
+
+   | command | counter to poll |
+   |---|---|
+   | `pull` / `pulls N` | `stats.pulls_total` |
+   | `trade` | `stats.trades_done` |
+   | `evolve <ID>` | `stats.evolutions_done` |
+   | `catch` | `coins` (deducted by 1 on attempt) OR `encounter` going null on success/escape |
 
    ```powershell
    $deadline = [DateTime]::Now.AddSeconds(8)
@@ -71,7 +80,7 @@ Spawn the engine in a new Windows Terminal tab so the user sees the full output 
    - HR or shiny pulled → small celebration line.
    - `Not enough coins` will surface in the tab; mirror it inline so the user notices without switching focus.
 
-### B. Everything else (`status`, `buddy <ID>`, `team ...`, `evolve <ID>`, `dex`, `help`) → run inline
+### B. Everything else (`status`, `buddy <ID>`, `team ...`, `dex`, `help`, `bag`, `items`, `shop`, `buy`, `use`, `moves`, `rename`, `daily`, `trainer`, `gyms`, `elite`, `champion`, `badges`, `theme`, `stats`, `achievements`, `event`) → run inline
 
 These don't have an animation — they're one-shot prints. Just invoke the engine via the PowerShell tool:
 

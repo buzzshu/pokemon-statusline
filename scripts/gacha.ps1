@@ -893,6 +893,22 @@ function Catch-Encounter($state) {
     $caught = ($roll -lt $rate)
     $glyph = Color $TypeColor[$poke.type1] "$($TypeGlyph[$poke.type1])"
     $name = Color '38;5;255' $poke.name_zh
+    # === STATE MUTATION (commit BEFORE animation, same pattern as Pull-Pack/Trade-Dupes) ===
+    $shiny = $false
+    $attemptsLeftAfter = 0
+    if ($caught) {
+        $shiny = Roll-Shiny
+        Add-Owned $state $id $shiny
+        if ($shiny) { $state.stats.shinies_total = [int]$state.stats.shinies_total + 1 }
+        $state.encounter = $null
+    } else {
+        $state.encounter.attempts_left = [int]$state.encounter.attempts_left - 1
+        $attemptsLeftAfter = [int]$state.encounter.attempts_left
+        if ($attemptsLeftAfter -le 0) { $state.encounter = $null }
+    }
+    Save-State $state
+
+    # === ANIMATION (purely cosmetic from here on) ===
     Print ''
     $ballTag = switch ($ballUsed) {
         'master' { Color '1;38;5;213' '>> MASTER BALL THROWN <<' }
@@ -909,24 +925,29 @@ function Catch-Encounter($state) {
     Print "  $(Dim '...shake...')"
     Start-Sleep -Milliseconds 400
     if ($caught) {
-        $shiny = Roll-Shiny
-        Add-Owned $state $id $shiny
-        if ($shiny) { $state.stats.shinies_total = [int]$state.stats.shinies_total + 1 }
+        # Reveal sprite line-by-line, same pacing as Pull-Pack
+        Print ''
+        $spritePath = Join-Path $ClaudeDir "sprites\regular\$id.txt"
+        if (Test-Path $spritePath) {
+            Get-Content $spritePath -Encoding UTF8 | ForEach-Object {
+                Print $_
+                Start-Sleep -Milliseconds 90
+            }
+        }
+        Start-Sleep -Milliseconds 300
         $shinyTag = if ($shiny) { ' ' + (Gold "$SPARKLE SHINY $SPARKLE") } else { '' }
         $rarityBadge = Format-RarityBadge $rarity $shiny
+        Print ''
         Print "  $(Color '1;38;5;82' 'GOTCHA!')  $rarityBadge  $glyph #$('{0:D3}' -f $id) $name$shinyTag"
         Print ''
         Print (Dim "  Catch rate was $([Math]::Round($rate * 100, 1))%. Coins: $([int]$state.coins).")
-        $state.encounter = $null
     } else {
-        $state.encounter.attempts_left = [int]$state.encounter.attempts_left - 1
-        if ([int]$state.encounter.attempts_left -le 0) {
+        if ($attemptsLeftAfter -le 0) {
             Print "  $(Color '38;5;196' 'Oh no! The wild') $glyph #$('{0:D3}' -f $id) $name $(Color '38;5;196' 'broke free and fled!')"
             Print ''
             Print (Dim "  Catch rate was $([Math]::Round($rate * 100, 1))%. Coins: $([int]$state.coins).")
-            $state.encounter = $null
         } else {
-            Print "  $(Color '38;5;208' 'The pokemon broke free!')  $glyph #$('{0:D3}' -f $id) $name $(Dim "(attempts left: $([int]$state.encounter.attempts_left))")"
+            Print "  $(Color '38;5;208' 'The pokemon broke free!')  $glyph #$('{0:D3}' -f $id) $name $(Dim "(attempts left: $attemptsLeftAfter)")"
             Print ''
             Print (Dim "  Catch rate $([Math]::Round($rate * 100, 1))%. Try again: /gacha catch. Coins: $([int]$state.coins).")
         }
@@ -2514,14 +2535,31 @@ function Evolve-Pokemon($state, [int]$id) {
     $state.team[$bestIdx].shiny = $hadShiny
     if ($bestIdx -eq 0) { Sync-Buddy-From-Team $state }
 
+    # Persist BEFORE animation, same pattern as Pull-Pack / Trade-Dupes / Catch.
+    Save-State $state
+
     $next = $Dex[[string]$poke.evolves_to]
     $g1 = Color $TypeColor[$poke.type1] "$($TypeGlyph[$poke.type1])"
     $g2 = Color $TypeColor[$next.type1] "$($TypeGlyph[$next.type1])"
     $shinyTag = if ($hadShiny) { Gold ' *shiny preserved*' } else { '' }
     $expTag = "$(Dim "(slot $($bestIdx + 1), kept exp $([int]$slot.exp) → LV. $(Get-Level [int]$slot.exp))")"
     Print ''
-    Print "  $g1 $($poke.name_zh) (#$id) $ARROW $g2 $($next.name_zh) (#$($next.id))  -$cost coin$shinyTag  $expTag"
-    Print (Dim "  Coins remaining: $([int]$state.coins)")
+    Print (Bold "=== Evolving... ===")
+    Print "  $g1 $($poke.name_zh) (#$id) $ARROW ???"
+    Start-Sleep -Milliseconds 600
+    # Reveal evolved form sprite line-by-line
+    Print ''
+    $spritePath = Join-Path $ClaudeDir "sprites\regular\$([int]$next.id).txt"
+    if (Test-Path $spritePath) {
+        Get-Content $spritePath -Encoding UTF8 | ForEach-Object {
+            Print $_
+            Start-Sleep -Milliseconds 90
+        }
+    }
+    Start-Sleep -Milliseconds 300
+    Print ''
+    Print "  $g2 $(Color '1;38;5;82' $next.name_zh) $(Color '38;5;245' "(#$($next.id))") 進化完成！$shinyTag  $expTag"
+    Print (Dim "  -$cost coin · Coins remaining: $([int]$state.coins)")
     Print ''
 }
 
