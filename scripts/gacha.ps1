@@ -189,6 +189,9 @@ $TypeChart = @{
 $SpecialTypes = @('fire','water','grass','electric','ice','psychic','dragon')
 
 # --- 8 Gen 1 gym leaders (canonical RBY) ---
+# Each row carries a `badge_idx` into $BadgeGlyphs below; statusline.ps1 keeps an
+# independent copy of the glyph/color table — see CLAUDE.md "Sprite rendering +
+# visible-width math" note for the duplication convention.
 $GymLeaders = @(
     @{ idx=1; city='灰色道館'; leader_name='小剛';   poke_id=95;  level=14; badge='灰色徽章' }    # Brock - Onix
     @{ idx=2; city='華藍道館'; leader_name='小霞';   poke_id=121; level=21; badge='藍色徽章' }    # Misty - Starmie
@@ -199,8 +202,23 @@ $GymLeaders = @(
     @{ idx=7; city='紅蓮道館'; leader_name='夏伯';   poke_id=59;  level=47; badge='火紅徽章' }    # Blaine - Arcanine
     @{ idx=8; city='常磐道館'; leader_name='阪木';   poke_id=112; level=50; badge='地球徽章' }    # Giovanni - Rhydon
 )
+# Badge visual table — keyed by gym idx 1..8.
+# Glyph picks loosely echo canonical badge shape (◆ Boulder / ◇ Cascade water-drop /
+# ✦ Thunder / ❀ Rainbow flower / ★ Marsh psychic / ♥ Soul / ▲ Volcano flame /
+# ● Earth). All BMP-only per CLAUDE.md glyph rule (no supplementary-plane emoji).
+$BadgeGlyphs = @{
+    1 = @{ glyph=[char]0x25C6; color='38;5;138' }   # ◆ brown/grey
+    2 = @{ glyph=[char]0x25C7; color='38;5;39'  }   # ◇ blue
+    3 = @{ glyph=[char]0x2726; color='38;5;226' }   # ✦ yellow
+    4 = @{ glyph=[char]0x2740; color='38;5;213' }   # ❀ pink
+    5 = @{ glyph=[char]0x2605; color='38;5;220' }   # ★ gold
+    6 = @{ glyph=[char]0x2665; color='38;5;141' }   # ♥ purple
+    7 = @{ glyph=[char]0x25B2; color='38;5;196' }   # ▲ red
+    8 = @{ glyph=[char]0x25CF; color='38;5;76'  }   # ● green/brown
+}
+$BadgeEmptyGlyph = [char]0x00B7   # · placeholder for unearned slots
 
-# --- Achievement definitions (20 milestones) ---
+# --- Achievement definitions (21 milestones) ---
 # Each entry: slug (unique key in state.achievements), name_zh (display), desc (hint),
 # kind (group for display ordering).
 $Achievements = @(
@@ -222,6 +240,7 @@ $Achievements = @(
     @{ slug='triple-clone';   name_zh='複製戰隊';   desc='Team 同時有 3 隻同 dex 寶可夢 [A][B][C]';  kind='team' }
     @{ slug='first-trade';    name_zh='首次交易';   desc='第一次 /gacha trade 完成';                  kind='train' }
     @{ slug='gym-1';          name_zh='道館初勝';   desc='打贏第一個道館';                            kind='battle' }
+    @{ slug='gym-4';          name_zh='半冠王';     desc='打贏 4 個道館';                             kind='battle' }
     @{ slug='gym-all';        name_zh='全道館征服'; desc='打贏全部 8 個 Gen 1 道館';                  kind='battle' }
     @{ slug='streak-10';      name_zh='戰鬥不敗';   desc='戰鬥最高連勝 10 場';                        kind='battle' }
 )
@@ -274,6 +293,7 @@ function Test-Achievement-Earned($state, [string]$slug) {
         'triple-clone'  { return (Check-TripleClone $state) }
         'first-trade'   { return ([int]$state.stats.trades_done -ge 1) }
         'gym-1'         { return ($state.gyms_beaten -and $state.gyms_beaten.Count -ge 1) }
+        'gym-4'         { return ($state.gyms_beaten -and $state.gyms_beaten.Count -ge 4) }
         'gym-all'       { return ($state.gyms_beaten -and $state.gyms_beaten.Count -ge 8) }
         'streak-10'     { return ([int]$state.battle_streak_best -ge 10) }
     }
@@ -1282,6 +1302,39 @@ function Show-Gyms($state) {
     Print ''
 }
 
+function Show-Badges($state) {
+    $beaten = @{}
+    if ($state.gyms_beaten) {
+        foreach ($g in $state.gyms_beaten) { $beaten[[int]$g] = $true }
+    }
+    $earned = $beaten.Count
+    $total = $GymLeaders.Count
+    Print ''
+    Print (Bold "=== Gym Badges ($earned/$total) ===")
+    Print ''
+    foreach ($gym in $GymLeaders) {
+        $i = [int]$gym.idx
+        $bg = $BadgeGlyphs[$i]
+        $hasBadge = [bool]$beaten[$i]
+        if ($hasBadge) {
+            $check = Color '1;38;5;82' '✓'
+            $badgeArt = Color $bg.color "$($bg.glyph)"
+            $badgeName = Color '1;38;5;220' $gym.badge
+            $cityLeader = Color '38;5;255' "$($gym.city) · $($gym.leader_name)"
+            Print "  $check $badgeArt  $badgeName  $(Dim "Gym #$i") $cityLeader"
+        } else {
+            $check = Color '38;5;238' '☐'
+            $badgeArt = Dim "$($bg.glyph)"
+            $badgeName = Dim $gym.badge
+            $cityLeader = Dim "$($gym.city) · $($gym.leader_name)"
+            Print "  $check $badgeArt  $badgeName  $(Dim "Gym #$i") $cityLeader"
+        }
+    }
+    Print ''
+    Print "  $(Dim '/gacha gym <N> 挑戰; /gacha gyms 看 leader 屬性與等級.')"
+    Print ''
+}
+
 function Challenge-Gym($state, [int]$gymIdx) {
     if ($gymIdx -lt 1 -or $gymIdx -gt 8) {
         Print (Color '38;5;196' "Gym index out of range (1-8).")
@@ -1389,6 +1442,18 @@ function Show-Trainer($state) {
         $teamLine = $glyphs -join ' '
     }
 
+    # Badges line — 8 glyph slots in gym order, earned colored / unearned dim
+    $beatenSet = @{}
+    if ($state.gyms_beaten) { foreach ($g in $state.gyms_beaten) { $beatenSet[[int]$g] = $true } }
+    $badgeCount = $beatenSet.Count
+    $badgeSlots = @()
+    for ($i = 1; $i -le 8; $i++) {
+        $bg = $BadgeGlyphs[$i]
+        if ($beatenSet[$i]) { $badgeSlots += (Color $bg.color "$($bg.glyph)") }
+        else { $badgeSlots += (Color '38;5;238' "$BadgeEmptyGlyph") }
+    }
+    $badgesLine = ($badgeSlots -join ' ') + '  ' + (Color '1;38;5;220' "$badgeCount/8")
+
     # Frame
     $T_LT2 = [string][char]0x2554; $T_RT2 = [string][char]0x2557
     $T_LB2 = [string][char]0x255A; $T_RB2 = [string][char]0x255D
@@ -1422,6 +1487,7 @@ function Show-Trainer($state) {
     Print $blank
     Print (Frame-Row 'BUDDY' $buddyLine $W)
     Print (Frame-Row 'TEAM' $teamLine $W)
+    Print (Frame-Row 'BADGES' $badgesLine $W)
     Print $blank
     Print $bot
     Print ''
@@ -1662,7 +1728,8 @@ function Show-Help {
     Print "  /gacha stats ID      full base-stat bars for a pokemon (HP/Atk/Def/SpA/SpD/Spd, 20-cell bars)"
     Print "  /gacha gyms          show all 8 Gen 1 gym leaders + your beat progress"
     Print "  /gacha gym N         challenge gym N (1-8); team fights at buddy LV, leader has fixed LV"
-    Print "  /gacha achievements  show all 20 milestone achievements + earned dates"
+    Print "  /gacha badges        show your earned gym badges (visual collection)"
+    Print "  /gacha achievements  show all 21 milestone achievements + earned dates"
     Print "  /gacha event         show today's themed pull bonus (rotates by weekday)"
     Print "  /gacha dex           Pokedex grid (every species ever caught)"
     Print "  /gacha bag           current bag (copies you still hold)"
@@ -1738,6 +1805,8 @@ switch ($Cmd.ToLower()) {
     'event'   { Show-Event }
     'today'   { Show-Event }
     'gyms'    { Show-Gyms $state }
+    'badges'  { Show-Badges $state }
+    'badge'   { Show-Badges $state }
     'gym'     {
         if ([string]::IsNullOrWhiteSpace($Arg)) { Show-Gyms $state; break }
         $g = 0

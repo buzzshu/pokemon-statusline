@@ -2,7 +2,7 @@
 
 A Pokémon-themed status line and gacha mini-game for [Claude Code](https://claude.com/claude-code), built for Windows + PowerShell.
 
-Coins auto-accrue from your session cost (1 coin per `$1` USD). Spend them on Gen 1 booster packs, raise a buddy, build a team of 6, challenge gym leaders, hunt legendaries, unlock 20 achievements.
+Coins auto-accrue from your session cost (1 coin per `$1` USD). Spend them on Gen 1 booster packs, raise a buddy, build a team of 6, challenge gym leaders, hunt legendaries, collect 8 gym badges, unlock 21 achievements.
 
 ```
   ╔═══ POKEMON ══════════════════════════════════════════════════════════════════╗
@@ -48,7 +48,8 @@ Coins auto-accrue from your session cost (1 coin per `$1` USD). Spend them on Ge
 /gacha trainer       trainer card (name / sessions / dex% / coins / buddy / team)
 /gacha gyms          list 8 Gen 1 gym leaders + your clear progress
 /gacha gym N         challenge gym N (1-8); battle plays in new wt tab
-/gacha achievements  20 milestone achievements + earned dates
+/gacha badges        gym badge collection (8 glyphs, earned vs. unearned)
+/gacha achievements  21 milestone achievements + earned dates
 /gacha event         today's themed pull bonus (rotates by weekday)
 /gacha help
 ```

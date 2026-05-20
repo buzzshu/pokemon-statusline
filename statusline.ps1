@@ -169,6 +169,20 @@ $tCol = @{
 }
 $rarityColor = @{ 'C' = '38;5;245'; 'U' = '38;5;82'; 'R' = '38;5;220'; 'HR' = '38;5;213' }
 
+# --- Badge glyph table (mirrors gacha.ps1 $BadgeGlyphs) ---
+# Keep these two copies in sync — see CLAUDE.md "Sprite rendering" note.
+$BadgeGlyphs = @{
+    1 = @{ glyph=[char]0x25C6; color='38;5;138' }
+    2 = @{ glyph=[char]0x25C7; color='38;5;39'  }
+    3 = @{ glyph=[char]0x2726; color='38;5;226' }
+    4 = @{ glyph=[char]0x2740; color='38;5;213' }
+    5 = @{ glyph=[char]0x2605; color='38;5;220' }
+    6 = @{ glyph=[char]0x2665; color='38;5;141' }
+    7 = @{ glyph=[char]0x25B2; color='38;5;196' }
+    8 = @{ glyph=[char]0x25CF; color='38;5;76'  }
+}
+$BadgeEmptyGlyph = [char]0x00B7
+
 # --- Mini progress-bar helper ---
 function Bar([int]$pct, [int]$cells, [string]$colorFull, [string]$colorEmpty = '38;5;238') {
     if ($pct -lt 0) { $pct = 0 } elseif ($pct -gt 100) { $pct = 100 }
@@ -564,6 +578,34 @@ foreach ($p in $parts) {
 }
 $boxLines += $boxBot
 
+# --- Optional BADGES sub-box: same width as STATUS, stacked directly underneath ---
+$badgeBoxLines = @()
+if ($gachaState -and $gachaState.gyms_beaten -and $gachaState.gyms_beaten.Count -gt 0) {
+    $beatenSet = @{}
+    foreach ($g in $gachaState.gyms_beaten) { $beatenSet[[int]$g] = $true }
+    $slots = @()
+    for ($i = 1; $i -le 8; $i++) {
+        $bg = $BadgeGlyphs[$i]
+        if ($beatenSet[$i]) { $slots += (Color $bg.color "$($bg.glyph)") }
+        else { $slots += (Color '38;5;238' "$BadgeEmptyGlyph") }
+    }
+    $badgeContent = ($slots -join ' ') + '  ' + (Color '1;38;5;220' "$($beatenSet.Count)/8")
+    $bLabelText = ' BADGES '
+    $bLeftFillN = 2
+    $bRightFillN = $contentW - $bLeftFillN - $bLabelText.Length
+    if ($bRightFillN -lt 0) { $bRightFillN = 0 }
+    $bHorizLeft  = $T_HZ * $bLeftFillN
+    $bHorizRight = $T_HZ * $bRightFillN
+    $bTop = (Color $frameCol "$T_LT$bHorizLeft") + (Color $labelCol $bLabelText) + (Color $frameCol "$bHorizRight$T_RT")
+    $bBot = Color $frameCol "$T_LB$horizFull$T_RB"
+    $bcW  = Get-VisibleWidth $badgeContent
+    $bcPad = ' ' * [Math]::Max(0, $contentW - $bcW - 1)
+    $bContentLine = (Color $frameCol $T_VT) + ' ' + $badgeContent + $bcPad + (Color $frameCol $T_VT)
+    $badgeBoxLines = @($bTop, $bContentLine, $bBot)
+}
+# Combine STATUS + BADGES into one right-column block so V-centering treats them as a unit
+$rightBoxLines = if ($badgeBoxLines.Count -gt 0) { $boxLines + $badgeBoxLines } else { $boxLines }
+
 # --- Compute sprite-block + status-box visible widths ---
 $rightArr = @($rightCol)
 $spriteBlockW = 0
@@ -572,23 +614,23 @@ foreach ($r in $rightArr) {
     if ($w -gt $spriteBlockW) { $spriteBlockW = $w }
 }
 $boxBlockW = 0
-foreach ($r in $boxLines) {
+foreach ($r in $rightBoxLines) {
     $w = Get-VisibleWidth $r
     if ($w -gt $boxBlockW) { $boxBlockW = $w }
 }
 
 # --- Compose inner content rows: sprite block (left) + GAP + status box (right), V-centered ---
 $GAP = '   '
-$innerH = [Math]::Max($rightArr.Count, $boxLines.Count)
+$innerH = [Math]::Max($rightArr.Count, $rightBoxLines.Count)
 $spritePadTop = [int][Math]::Floor(($innerH - $rightArr.Count) / 2.0)
-$boxPadTop = [int][Math]::Floor(($innerH - $boxLines.Count) / 2.0)
+$boxPadTop = [int][Math]::Floor(($innerH - $rightBoxLines.Count) / 2.0)
 $innerContentW = $spriteBlockW + $GAP.Length + $boxBlockW
 $innerRows = @()
 for ($i = 0; $i -lt $innerH; $i++) {
     $sIdx = $i - $spritePadTop
     $bIdx = $i - $boxPadTop
     $sLine = if ($sIdx -ge 0 -and $sIdx -lt $rightArr.Count) { $rightArr[$sIdx] } else { '' }
-    $bLine = if ($bIdx -ge 0 -and $bIdx -lt $boxLines.Count) { $boxLines[$bIdx] } else { '' }
+    $bLine = if ($bIdx -ge 0 -and $bIdx -lt $rightBoxLines.Count) { $rightBoxLines[$bIdx] } else { '' }
     $sVw = Get-VisibleWidth $sLine
     $sPad = ' ' * [Math]::Max(0, $spriteBlockW - $sVw)
     $innerRows += $sLine + $sPad + $GAP + $bLine
