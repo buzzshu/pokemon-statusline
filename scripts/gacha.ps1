@@ -250,6 +250,17 @@ $GymLeaders = @(
     @{ idx=7; city='紅蓮道館'; leader_name='夏伯';   poke_id=59;  level=47; badge='火紅徽章' }    # Blaine - Arcanine
     @{ idx=8; city='常磐道館'; leader_name='阪木';   poke_id=112; level=50; badge='地球徽章' }    # Giovanni - Rhydon
 )
+
+# --- Elite Four + Champion (gated behind all 8 gym badges) ---
+# Each leader fields 2-3 pokemon (not just 1 like gyms). Levels mirror RBY canon
+# (Lorelei L52-54, Bruno L53-56, Agatha L54-58, Lance L56-62, Champion L59-65).
+$EliteFour = @(
+    @{ idx=1; title='四大天王 1';    leader_name='科拿';     theme='ice';      poke_ids=@(87, 91, 80, 124, 131);    levels=@(52, 53, 54, 56, 54) }    # Lorelei: Dewgong/Cloyster/Slowbro/Jynx/Lapras
+    @{ idx=2; title='四大天王 2';    leader_name='希巴';     theme='fighting'; poke_ids=@(95, 107, 106, 95, 68);    levels=@(53, 55, 55, 56, 58) }    # Bruno: Onix/Hitmonchan/Hitmonlee/Onix/Machamp
+    @{ idx=3; title='四大天王 3';    leader_name='菊子';     theme='ghost';    poke_ids=@(94, 42, 93, 24, 94);      levels=@(56, 56, 55, 58, 60) }    # Agatha: Gengar/Golbat/Haunter/Arbok/Gengar
+    @{ idx=4; title='四大天王 4';    leader_name='阿渡';     theme='dragon';   poke_ids=@(130, 148, 148, 142, 149); levels=@(58, 56, 56, 60, 62) }    # Lance: Gyarados/Dragonair/Dragonair/Aerodactyl/Dragonite
+    @{ idx=5; title='冠軍';          leader_name='青綠';     theme='mixed';    poke_ids=@(18, 65, 112, 59, 103, 6); levels=@(59, 59, 61, 61, 61, 65) } # Blue (Charizard route): Pidgeot/Alakazam/Rhydon/Arcanine/Exeggutor/Charizard
+)
 # Badge visual table — keyed by gym idx 1..8.
 # Glyph picks loosely echo canonical badge shape (◆ Boulder / ◇ Cascade water-drop /
 # ✦ Thunder / ❀ Rainbow flower / ★ Marsh psychic / ♥ Soul / ▲ Volcano flame /
@@ -358,6 +369,9 @@ $Achievements = @(
     @{ slug='shop-first';     name_zh='初次採購';   desc='第一次 /gacha buy 完成';                    kind='item' }
     @{ slug='master-ball-use'; name_zh='大師球使用者'; desc='用過 1 顆 master ball 抓寶可夢';         kind='item' }
     @{ slug='wallet-500';     name_zh='富甲一方';   desc='累積過 500 coin (歷史最高)';                kind='item' }
+    @{ slug='elite-1';        name_zh='天王挑戰';   desc='擊敗第一位四大天王';                        kind='battle' }
+    @{ slug='elite-4';        name_zh='四大天王';   desc='擊敗全部 4 位天王';                         kind='battle' }
+    @{ slug='champion';       name_zh='冠軍之路';   desc='擊敗冠軍';                                  kind='battle' }
 )
 
 function Count-Caught($state) {
@@ -449,6 +463,9 @@ function Test-Achievement-Earned($state, [string]$slug) {
         'shop-first'        { return ([int]$state.stats.items_bought -ge 1) }
         'master-ball-use'   { return ([int]$state.stats.master_balls_used -ge 1) }
         'wallet-500'        { return ([int]$state.stats.coins_peak -ge 500) }
+        'elite-1'           { return ($state.elite_beaten -and $state.elite_beaten.Count -ge 1) }
+        'elite-4'           { return ($state.elite_beaten -and ($state.elite_beaten | Where-Object { $_ -ge 1 -and $_ -le 4 }).Count -ge 4) }
+        'champion'          { return ($state.elite_beaten -and ($state.elite_beaten -contains 5)) }
     }
     return $false
 }
@@ -652,6 +669,8 @@ function Load-State {
     # Daily login bonus tracking (batch 7)
     if (-not $state.Contains('last_daily_ep')) { $state.last_daily_ep = 0 }
     if (-not $state.Contains('daily_streak'))  { $state.daily_streak = 0 }
+    # Elite Four / Champion progress (batch 7)
+    if (-not $state.Contains('elite_beaten') -or $null -eq $state.elite_beaten) { $state.elite_beaten = @() }
     # Stats counters added in batch 6 (achievements expansion). Lazy-add missing keys.
     if (-not $state.stats.Contains('items_bought'))      { $state.stats.items_bought = 0 }
     if (-not $state.stats.Contains('stones_used'))       { $state.stats.stones_used = 0 }
@@ -2073,6 +2092,263 @@ function Challenge-Gym($state, [int]$gymIdx) {
     Print ''
 }
 
+function Export-Trainer-PNG($state) {
+    Add-Type -AssemblyName System.Drawing -ErrorAction Stop
+    # Trainer name from git
+    $trainerName = 'Trainer'
+    try {
+        $gn = git config --global user.name 2>$null
+        if ($gn) { $trainerName = [string]$gn }
+    } catch {}
+
+    # Aggregate
+    $caught = 0; $shinyTotal = 0
+    foreach ($k in $state.owned.Keys) {
+        if ($null -ne $state.owned[$k].first_caught) { $caught++ }
+        $shinyTotal += [int]$state.owned[$k].shiny_count
+    }
+    $dexPct = [Math]::Round(($caught / 151.0) * 100, 1)
+    $coins = [int]$state.coins
+    $sessions = [int]$state.sessions_count
+    $pulls = [int]$state.stats.pulls_total
+    $beatGyms = if ($state.gyms_beaten) { $state.gyms_beaten.Count } else { 0 }
+    $beatElite = if ($state.elite_beaten) { $state.elite_beaten.Count } else { 0 }
+
+    # Buddy
+    $buddyText = '(no buddy)'
+    if ($state.buddy -and $state.buddy.id) {
+        $bp = $Dex[[string]([int]$state.buddy.id)]
+        $bnick = if ($state.buddy.nickname) { [string]$state.buddy.nickname } else { $null }
+        $bname = if ($bnick) { "$bnick ($($bp.name_zh))" } else { $bp.name_zh }
+        $blv = Get-Level ([int]$state.buddy.exp)
+        $buddyText = "#$('{0:D3}' -f $bp.id) $bname  LV $blv  exp $([int]$state.buddy.exp)"
+    }
+
+    # Team line (glyphs as chars, 6 slots)
+    $teamLineParts = @()
+    if ($state.team) {
+        foreach ($t in $state.team) {
+            $tid = [int]$t.id
+            $tp = $Dex[[string]$tid]
+            if ($tp) {
+                $tlv = Get-Level ([int]$t.exp)
+                $teamLineParts += "#$('{0:D3}' -f $tid) L$tlv"
+            }
+        }
+    }
+    $teamText = if ($teamLineParts.Count -gt 0) { $teamLineParts -join ' / ' } else { '(empty)' }
+
+    # Build the PNG
+    $W = 760; $H = 460
+    $bmp = New-Object System.Drawing.Bitmap($W, $H)
+    $g = [System.Drawing.Graphics]::FromImage($bmp)
+    $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::AntiAliasGridFit
+    $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+
+    # Background
+    $g.Clear([System.Drawing.Color]::FromArgb(12, 12, 12))
+
+    # Gold outer frame
+    $gold = [System.Drawing.Color]::FromArgb(255, 216, 107)
+    $blue = [System.Drawing.Color]::FromArgb(135, 170, 255)
+    $white = [System.Drawing.Color]::White
+    $dimGrey = [System.Drawing.Color]::FromArgb(136, 136, 136)
+    $green = [System.Drawing.Color]::FromArgb(130, 255, 130)
+
+    $framePen = New-Object System.Drawing.Pen($gold, 4)
+    $g.DrawRectangle($framePen, 10, 10, $W - 20, $H - 20)
+    $framePen.Dispose()
+
+    # Fonts
+    $titleFont = New-Object System.Drawing.Font('Consolas', 22, [System.Drawing.FontStyle]::Bold)
+    $headFont  = New-Object System.Drawing.Font('Consolas', 14, [System.Drawing.FontStyle]::Bold)
+    $bodyFont  = New-Object System.Drawing.Font('Consolas', 13)
+    $smallFont = New-Object System.Drawing.Font('Consolas', 11)
+
+    $goldBrush  = New-Object System.Drawing.SolidBrush($gold)
+    $whiteBrush = New-Object System.Drawing.SolidBrush($white)
+    $blueBrush  = New-Object System.Drawing.SolidBrush($blue)
+    $dimBrush   = New-Object System.Drawing.SolidBrush($dimGrey)
+    $greenBrush = New-Object System.Drawing.SolidBrush($green)
+
+    # Header
+    $g.DrawString('=== TRAINER CARD ===', $titleFont, $goldBrush, 220, 22)
+
+    # Trainer name + sessions
+    $g.DrawString("Trainer: $trainerName", $headFont, $whiteBrush, 40, 70)
+    $g.DrawString("Sessions: $sessions", $smallFont, $dimBrush, 540, 76)
+
+    # Divider
+    $linePen = New-Object System.Drawing.Pen($blue, 2)
+    $g.DrawLine($linePen, 30, 100, $W - 30, 100)
+
+    # Stats grid (2 columns)
+    $y = 120
+    $col1 = 40; $col2 = 400
+    $g.DrawString("COINS",       $headFont, $blueBrush, $col1, $y);  $g.DrawString("$coins", $bodyFont, $goldBrush, $col1 + 110, $y)
+    $g.DrawString("DEX",         $headFont, $blueBrush, $col2, $y);  $g.DrawString("$caught/151  ($dexPct%)", $bodyFont, $whiteBrush, $col2 + 70, $y)
+    $y += 32
+    $g.DrawString("PULLS",       $headFont, $blueBrush, $col1, $y);  $g.DrawString("$pulls", $bodyFont, $whiteBrush, $col1 + 110, $y)
+    $g.DrawString("SHINIES",     $headFont, $blueBrush, $col2, $y);  $g.DrawString("$shinyTotal", $bodyFont, $goldBrush, $col2 + 110, $y)
+    $y += 32
+    $g.DrawString("GYMS",        $headFont, $blueBrush, $col1, $y);  $g.DrawString("$beatGyms/8", $bodyFont, $whiteBrush, $col1 + 110, $y)
+    $g.DrawString("ELITE 4",     $headFont, $blueBrush, $col2, $y);  $g.DrawString("$beatElite/5", $bodyFont, $whiteBrush, $col2 + 110, $y)
+
+    # Divider
+    $g.DrawLine($linePen, 30, $y + 32, $W - 30, $y + 32)
+    $y += 50
+
+    # Buddy
+    $g.DrawString("BUDDY", $headFont, $blueBrush, 40, $y)
+    $g.DrawString($buddyText, $bodyFont, $greenBrush, 130, $y)
+    $y += 32
+
+    # Team
+    $g.DrawString("TEAM", $headFont, $blueBrush, 40, $y)
+    $g.DrawString($teamText, $smallFont, $whiteBrush, 130, $y + 2)
+    $y += 32
+
+    # Badges (8 circles, filled if earned)
+    $g.DrawString("BADGES", $headFont, $blueBrush, 40, $y)
+    $badgeBeat = @{}
+    if ($state.gyms_beaten) { foreach ($x in $state.gyms_beaten) { $badgeBeat[[int]$x] = $true } }
+    for ($i = 1; $i -le 8; $i++) {
+        $bx = 130 + ($i - 1) * 30
+        $by = $y + 4
+        if ($badgeBeat[$i]) {
+            $g.FillEllipse($goldBrush, $bx, $by, 18, 18)
+        } else {
+            $outlinePen = New-Object System.Drawing.Pen($dimGrey, 2)
+            $g.DrawEllipse($outlinePen, $bx, $by, 18, 18)
+            $outlinePen.Dispose()
+        }
+    }
+    $g.DrawString("$beatGyms/8", $smallFont, $whiteBrush, 380, $y + 4)
+
+    # Footer
+    $g.DrawString("github.com/buzzshu/pokemon-statusline", $smallFont, $dimBrush, 40, $H - 38)
+    $g.DrawString((Get-Date -Format 'yyyy-MM-dd'), $smallFont, $dimBrush, $W - 130, $H - 38)
+
+    # Save
+    $exportDir = Join-Path $env:USERPROFILE '.claude\exports'
+    if (-not (Test-Path $exportDir)) { New-Item -ItemType Directory -Path $exportDir -Force | Out-Null }
+    $ts = [int]([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())
+    $outPath = Join-Path $exportDir "trainer-$ts.png"
+    $bmp.Save($outPath, [System.Drawing.Imaging.ImageFormat]::Png)
+
+    # Cleanup
+    $titleFont.Dispose(); $headFont.Dispose(); $bodyFont.Dispose(); $smallFont.Dispose()
+    $goldBrush.Dispose(); $whiteBrush.Dispose(); $blueBrush.Dispose(); $dimBrush.Dispose(); $greenBrush.Dispose()
+    $linePen.Dispose()
+    $g.Dispose(); $bmp.Dispose()
+
+    Print ''
+    Print "  $(Color '1;38;5;82' '✓') Trainer card exported to $(Color '1;38;5;255' $outPath)"
+    Print ''
+}
+
+function Show-Elite($state) {
+    Print ''
+    Print (Bold '=== Elite Four + 冠軍 ===')
+    Print ''
+    $beaten8 = ($state.gyms_beaten -and $state.gyms_beaten.Count -ge 8)
+    if (-not $beaten8) {
+        Print "  $(Color '38;5;196' '需要先打贏全部 8 個道館才能挑戰天王。')"
+        Print "  $(Dim "目前進度：$($state.gyms_beaten.Count)/8")"
+        Print ''
+        return
+    }
+    if (-not $state.elite_beaten) { $state.elite_beaten = @() }
+    foreach ($e in $EliteFour) {
+        $i = [int]$e.idx
+        $hasBeaten = ($state.elite_beaten -contains $i)
+        $tag = if ($hasBeaten) { Color '1;38;5;82' '✓' } else { Color '38;5;238' '☐' }
+        $title = Color '1;38;5;220' $e.title
+        $name = Color '1;38;5;255' $e.leader_name
+        $themeCol = if ($TypeColor.ContainsKey($e.theme)) { $TypeColor[$e.theme] } else { '38;5;255' }
+        $themeTag = Color $themeCol $e.theme.ToUpper()
+        $sz = $e.poke_ids.Count
+        $lvAvg = [int][Math]::Round((($e.levels | Measure-Object -Sum).Sum / $sz), 0)
+        Print "  $tag $title  $name  $(Dim "$themeTag ·") $(Color '38;5;220' "$sz 隻 / 平均 LV $lvAvg")"
+    }
+    Print ''
+    Print "  $(Dim '/gacha elite <1-4> 挑戰天王，/gacha champion 冠軍戰 (順序不強制)')"
+    Print ''
+}
+
+function Challenge-Elite($state, [int]$idx) {
+    if ($idx -lt 1 -or $idx -gt 5) {
+        Print (Color '38;5;196' "Elite index out of range (1-4, or 5 = Champion).")
+        return
+    }
+    $beaten8 = ($state.gyms_beaten -and $state.gyms_beaten.Count -ge 8)
+    if (-not $beaten8) {
+        Print (Color '38;5;196' "需要先打贏全部 8 個道館才能挑戰天王 (目前 $($state.gyms_beaten.Count)/8).")
+        return
+    }
+    $e = $EliteFour[$idx - 1]
+    if (-not $state.team -or $state.team.Count -eq 0) {
+        Print (Color '38;5;196' 'Team is empty. Use /gacha buddy <id> to start a team first.')
+        return
+    }
+    $userTeam = Build-User-Team $state
+    if ($userTeam.Count -eq 0) {
+        Print (Color '38;5;196' 'Team contains no valid pokemon.')
+        return
+    }
+    $leaderTeam = @()
+    for ($k = 0; $k -lt $e.poke_ids.Count; $k++) {
+        $leaderTeam += , (Build-Combatant ([int]$e.poke_ids[$k]) ([int]$e.levels[$k]) $false)
+    }
+
+    Print ''
+    Print (Color '1;38;5;220' "你挑戰了 $($e.title) — $($e.leader_name)！")
+    Print "  $(Dim '對手隊伍:') $($e.poke_ids.Count) 隻 (LV $($e.levels -join '/'))"
+    Print ''
+    Start-Sleep -Milliseconds 800
+
+    $result = Resolve-Battle $userTeam $leaderTeam ("$(Color '1;38;5;82' '你')") ("$(Color '1;38;5;196' $e.leader_name)")
+
+    if ($result -eq 'A') {
+        Print (Color '1;38;5;82' "★ 勝利！你打敗了 $($e.leader_name)！")
+        $coinReward = ($e.levels | Measure-Object -Maximum).Maximum * 5
+        $leadExp = ($e.levels | Measure-Object -Maximum).Maximum * 2
+        $sideExp = [int][Math]::Floor($leadExp / 4)
+        $state.coins = [int]$state.coins + $coinReward
+        $sideAwarded = 0
+        if ($state.team -and $state.team.Count -gt 0) {
+            $state.team[0].exp = [int]$state.team[0].exp + $leadExp
+            for ($i = 1; $i -lt [Math]::Min($state.team.Count, $userTeam.Count); $i++) {
+                if ([int]$userTeam[$i].hp_cur -gt 0) {
+                    $state.team[$i].exp = [int]$state.team[$i].exp + $sideExp
+                    $sideAwarded++
+                }
+            }
+            Sync-Buddy-From-Team $state
+        }
+        if (-not $state.elite_beaten) { $state.elite_beaten = @() }
+        if (-not ($state.elite_beaten -contains $idx)) {
+            $state.elite_beaten += $idx
+        }
+        $state.battle_streak_current = [int]$state.battle_streak_current + 1
+        if ([int]$state.battle_streak_current -gt [int]$state.battle_streak_best) {
+            $state.battle_streak_best = [int]$state.battle_streak_current
+        }
+        Print ''
+        $sideTag = if ($sideAwarded -gt 0) { "  +$sideExp exp × $sideAwarded 倖存隊員" } else { '' }
+        Print (Dim "  獎勵：+$coinReward coins  ·  +$leadExp exp to buddy$sideTag  ·  streak $($state.battle_streak_current) (best $($state.battle_streak_best))")
+        Print (Dim "  進度：$($state.elite_beaten.Count)/5 天王/冠軍")
+    } elseif ($result -eq 'B') {
+        Print (Color '1;38;5;196' "✕ 戰敗。天王太強，回去再練吧。")
+        Print (Dim "  Tips: 帶滿 6 隻、覆蓋多種屬性、用 Lucky Egg 加速練功. streak 0 (best $($state.battle_streak_best)).")
+        $state.battle_streak_current = 0
+    } else {
+        Print (Dim "  Stalemate — 30 回合無分勝負，撤退. streak 0 (best $($state.battle_streak_best)).")
+        $state.battle_streak_current = 0
+    }
+    Print ''
+}
+
 function Show-Trainer($state) {
     # Pull trainer name from git config (user.name), fall back to "Trainer".
     $name = 'Trainer'
@@ -2452,6 +2728,9 @@ function Show-Help {
     Print "  /gacha moves <id>    show a pokemon's moveset (signature kit or auto-derived from types/stage)"
     Print "  /gacha rename <id> <nick>  give the highest-exp team slot of <id> a nickname (empty = clear)"
     Print "  /gacha daily         claim 24h login bonus (5 coin + streak bonus; milestones at day 7/14/30 give balls)"
+    Print "  /gacha elite [N]     show / challenge the Elite Four (1-4); requires all 8 gym badges"
+    Print "  /gacha champion      final fight vs Blue (unlocked after Elite Four cleared, but not strictly gated)"
+    Print "  /gacha trainer png   export trainer card to PNG at ~/.claude/exports/trainer-<ts>.png"
     Print "  /gacha achievements  show all 21 milestone achievements + earned dates"
     Print "  /gacha event         show today's themed pull bonus (rotates by weekday)"
     Print "  /gacha dex           Pokedex grid (every species ever caught)"
@@ -2528,7 +2807,13 @@ try {
     }
     'trade'   { Trade-Dupes $state }
     'catch'   { Catch-Encounter $state }
-    'trainer' { Show-Trainer $state }
+    'trainer' {
+        if ($Arg -eq 'png' -or $Arg -eq 'export') {
+            Export-Trainer-PNG $state
+        } else {
+            Show-Trainer $state
+        }
+    }
     'card'    { Show-Trainer $state }
     'stats'   {
         $id = 0
@@ -2576,6 +2861,13 @@ try {
         Rename-Pokemon $state $id $nick
     }
     'daily'   { Claim-Daily $state }
+    'elite'   {
+        if ([string]::IsNullOrWhiteSpace($Arg)) { Show-Elite $state; break }
+        $n = 0
+        if (-not [int]::TryParse($Arg, [ref]$n)) { Print "Usage: elite <1-4>"; break }
+        Challenge-Elite $state $n
+    }
+    'champion' { Challenge-Elite $state 5 }
     'gym'     {
         if ([string]::IsNullOrWhiteSpace($Arg)) { Show-Gyms $state; break }
         $g = 0
