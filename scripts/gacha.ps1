@@ -68,6 +68,15 @@ $RarityColor = @{ 'C' = '38;5;245'; 'U' = '38;5;82'; 'R' = '38;5;220'; 'HR' = '3
 #   L1=0, L2=1, L3=3, L4=6, L5=10, L10=45, L16=120, L25=300, L36=630, L55=1485
 # +1 exp per session, so first 5 levels go fast; mid-game (L16) takes ~120 sessions
 # of dedicated buddying, L25+ is real commitment.
+function Get-TrainerName {
+    $name = 'Trainer'
+    try {
+        $gn = git config --global user.name 2>$null
+        if ($gn) { $name = [string]$gn }
+    } catch {}
+    return $name
+}
+
 function Get-Level([int]$exp) {
     if ($exp -lt 0) { return 1 }
     # Exact inverse of L*(L-1)/2 = exp. The naive floor(sqrt(2*exp))+1 overshoots
@@ -1625,7 +1634,10 @@ function Resolve-Battle($teamA, $teamB, [string]$nameA, [string]$nameB) {
             $idxA++
             Start-Sleep -Milliseconds 800
             if ($idxA -lt $teamA.Count) {
-                Print "$(Color $nameA "$nameA 派出 $(Format-Combatant $teamA[$idxA])！")"
+                # $nameA already carries its own ANSI color wrapper from the caller;
+                # don't re-Color it (that treated the color string as a color CODE
+                # and produced garbled output like "你m你").
+                Print "$nameA 派出 $(Format-Combatant $teamA[$idxA])！"
                 Print ''
                 Start-Sleep -Milliseconds 700
             }
@@ -1635,7 +1647,7 @@ function Resolve-Battle($teamA, $teamB, [string]$nameA, [string]$nameB) {
             $idxB++
             Start-Sleep -Milliseconds 800
             if ($idxB -lt $teamB.Count) {
-                Print "$(Color $nameB "$nameB 派出 $(Format-Combatant $teamB[$idxB])！")"
+                Print "$nameB 派出 $(Format-Combatant $teamB[$idxB])！"
                 Print ''
                 Start-Sleep -Milliseconds 700
             }
@@ -2073,7 +2085,8 @@ function Challenge-Gym($state, [int]$gymIdx) {
     Start-Sleep -Milliseconds 800
 
     $userLvl = $userTeam[0].level
-    $result = Resolve-Battle $userTeam $leaderTeam ("$(Color '1;38;5;82' '你')") ("$(Color '1;38;5;196' "$($gym.leader_name)")")
+    $trainerN = Get-TrainerName
+    $result = Resolve-Battle $userTeam $leaderTeam ("$(Color '1;38;5;82' $trainerN)") ("$(Color '1;38;5;196' "$($gym.leader_name)")")
 
     if ($result -eq 'A') {
         Print (Color '1;38;5;82' "★ 勝利！你打贏 $($gym.leader_name)，獲得 $($gym.badge)！")
@@ -2119,12 +2132,7 @@ function Challenge-Gym($state, [int]$gymIdx) {
 
 function Export-Trainer-PNG($state) {
     Add-Type -AssemblyName System.Drawing -ErrorAction Stop
-    # Trainer name from git
-    $trainerName = 'Trainer'
-    try {
-        $gn = git config --global user.name 2>$null
-        if ($gn) { $trainerName = [string]$gn }
-    } catch {}
+    $trainerName = Get-TrainerName
 
     # Aggregate
     $caught = 0; $shinyTotal = 0
@@ -2332,7 +2340,8 @@ function Challenge-Elite($state, [int]$idx) {
     Print ''
     Start-Sleep -Milliseconds 800
 
-    $result = Resolve-Battle $userTeam $leaderTeam ("$(Color '1;38;5;82' '你')") ("$(Color '1;38;5;196' $e.leader_name)")
+    $trainerN = Get-TrainerName
+    $result = Resolve-Battle $userTeam $leaderTeam ("$(Color '1;38;5;82' $trainerN)") ("$(Color '1;38;5;196' $e.leader_name)")
 
     if ($result -eq 'A') {
         Print (Color '1;38;5;82' "★ 勝利！你打敗了 $($e.leader_name)！")
@@ -2375,12 +2384,7 @@ function Challenge-Elite($state, [int]$idx) {
 }
 
 function Show-Trainer($state) {
-    # Pull trainer name from git config (user.name), fall back to "Trainer".
-    $name = 'Trainer'
-    try {
-        $gn = git config --global user.name 2>$null
-        if ($gn) { $name = [string]$gn }
-    } catch {}
+    $name = Get-TrainerName
 
     # Aggregate stats
     $caught = 0
