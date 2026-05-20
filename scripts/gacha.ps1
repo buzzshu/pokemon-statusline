@@ -862,6 +862,8 @@ function Load-State {
     if ($state.unlocked_frames -isnot [array]) { $state.unlocked_frames = @($state.unlocked_frames) }
     if (-not ($state.unlocked_frames -contains 'gold')) { $state.unlocked_frames = @('gold') + $state.unlocked_frames }
     if (-not $state.Contains('current_frame') -or [string]::IsNullOrWhiteSpace($state.current_frame)) { $state.current_frame = 'gold' }
+    # Derived: cached power level for statusline (real recompute happens on Save-State)
+    if (-not $state.Contains('power_level')) { $state.power_level = 0 }
     # coins_peak high-water: bump whenever we see a higher current balance.
     if ([int]$state.coins -gt [int]$state.stats.coins_peak) { $state.stats.coins_peak = [int]$state.coins }
     return $state
@@ -918,6 +920,10 @@ function Release-StateLock($mutex) {
 }
 
 function Save-State($state) {
+    # Cache derived fields so other consumers (statusline) don't duplicate the formula.
+    # Get-PowerLevel reads $Stats (not in state), so statusline can't compute it itself
+    # without re-loading pokemon-stats.json on every render.
+    $state.power_level = Get-PowerLevel $state
     $dir = Split-Path -Parent $StateFile
     if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
     # Keep a backup of the previous state so a future parse-failure reset doesn't

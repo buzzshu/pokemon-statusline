@@ -268,6 +268,22 @@ $BadgeGlyphs = @{
 }
 $BadgeEmptyGlyph = [char]0x00B7
 
+# --- Title glyph/color table (mirrors gacha.ps1 $Titles) ---
+# Plain ASCII glyphs only — supplementary-plane emoji from $Titles (🌱/💎/👑/💰/🏆)
+# would break conhost fallback. Map keeps the symbol/color, drops the emoji.
+$TitleGlyphs = @{
+    'newbie'           = @{ glyph='*'; color='38;5;82';    name='新人' }
+    'collector-50'     = @{ glyph='+'; color='38;5;220';   name='收藏家' }
+    'collector-100'    = @{ glyph='+'; color='1;38;5;51';  name='完美收藏' }
+    'collector-151'    = @{ glyph='K'; color='1;38;5;220'; name='圖鑑大師' }
+    'hr-owner'         = @{ glyph=[char]0x2736; color='1;38;5;213';  name='神獸' }
+    'shiny-hunter'     = @{ glyph=[char]0x2726; color='1;38;5;220'; name='閃光獵人' }
+    'gym-master'       = @{ glyph=[char]0x25C6; color='1;38;5;208'; name='道館征服者' }
+    'evolution-master' = @{ glyph=[char]0x2191; color='38;5;141';   name='進化大師' }
+    'wallet-king'      = @{ glyph='$'; color='1;38;5;226'; name='富甲一方' }
+    'champion'         = @{ glyph='C'; color='1;38;5;196'; name='冠軍' }
+}
+
 # --- Theme palette (mirrors gacha.ps1 $Themes). state.theme selects which row applies. ---
 # Falls back to 'gba' if missing or unknown. Used to override $outerCol / $outerTitleCol /
 # $frameCol / $labelCol below.
@@ -546,6 +562,19 @@ if ($overflowCompanions.Count -gt 0) {
         $companionGlyphs += "$cGlyph$(Color '38;5;245' "#$('{0:D3}' -f $cid)")$cLetter"
     }
     $parts += "$(Color '38;5;141' 'TEAM') $($companionGlyphs -join ' ')"
+}
+
+# Equipped title + cached power level (both written by gacha.ps1; falls back if missing).
+if ($gachaState) {
+    $tslug = if ($gachaState.current_title) { [string]$gachaState.current_title } else { '' }
+    if ($tslug -and $TitleGlyphs.ContainsKey($tslug)) {
+        $tinfo = $TitleGlyphs[$tslug]
+        $parts += "$(Color '38;5;141' 'TTL ') $(Color $tinfo.color "$($tinfo.glyph) $($tinfo.name)")"
+    }
+    $pwr = [int]$gachaState.power_level
+    if ($pwr -gt 0) {
+        $parts += "$(Color '38;5;141' 'PWR ') $(Color '1;38;5;208' "$pwr")"
+    }
 }
 
 # --- Build RIGHT column: sprite art + name row + leader extra row ---
