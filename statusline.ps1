@@ -774,21 +774,32 @@ if ($gachaState -and $gachaState.encounter -and $gachaState.encounter.id -and [i
 # only 50% of the time (also deterministic from session_id) — keeps it
 # occasional instead of every-render chatty.
 $BuddyLines = @{
-    'normal'   = @('一切如常。', '今天天氣不錯。', '陪你工作中～', '想做點什麼但又懶得動')
-    'fire'     = @('🔥 燃燒吧！', '今天的火焰特別旺。', '不要靠太近，會燙到。', '咳，剛剛打了一個熱噴嚏')
-    'water'    = @('水量充沛，狀態 OK。', '想去衝浪。', '今天的水很清涼。', '~~~ 飄飄的')
-    'electric' = @('⚡ 又是充滿電的一天！', '靜電有點刺刺的⚡', '你的鍵盤聽起來像在打字呢⚡', '今天的雷雲很有食慾。')
-    'grass'    = @('光合作用中... ☘', '土壤的味道真好聞。', '感覺今天會發芽。', '葉子有點蜷起來了')
-    'ice'      = @('外面好暖，我不喜歡。', '今天我發了冰光線。', '結霜的觸感很棒。', '不要靠太近，會冷。')
-    'fighting' = @('💪 訓練時間到！', '想單挑嗎？', '今天的拳頭特別硬。', '出招要快、要狠、要準。')
-    'poison'   = @('別碰我喔～', '今天的毒液濃度剛剛好', '聞起來像紫色', '我的觸手有自己的想法')
-    'ground'   = @('土壤鬆軟，挖洞容易。', '今天的地震只有 1 級', '泥土的味道真好', '腳下的塵土告訴我...')
-    'flying'   = @('飛行中... 風很大', '想看雲嗎？', '從上面看下來，你超小', '今天的天空很藍')
-    'psychic'  = @('我感應到... 你在改 code 嗎', '心靈感應很累', '腦袋有點抽抽的', '預感今天會打贏')
-    'bug'      = @('觸角顫動中', '光線好刺眼', '今天我絲很多', '蟲蟲危機！')
-    'rock'     = @('硬硬的，沒事', '岩石不會說話。', '今天的礦物心情不錯', '靜止中...')
-    'ghost'    = @('呵呵呵... 👻', '你看得到我嗎', '影子不見了！', '今天適合鬧鬼')
-    'dragon'   = @('龍威壓，發動！', '今天感覺特別強', '想噴一下嗎', '神龍見首不見尾')
+    'normal'   = @('一切如常。', '今天天氣不錯。', '陪你工作中～', '想做點什麼但又懶得動', '又是平凡的一天，剛好。', '嗯。', '在嗎？')
+    'fire'     = @('🔥 燃燒吧！', '今天的火焰特別旺。', '不要靠太近，會燙到。', '咳，剛剛打了一個熱噴嚏', '尾巴的火快燒到傢俱了', '熱熱的，我喜歡', '想吃辣的')
+    'water'    = @('水量充沛，狀態 OK。', '想去衝浪。', '今天的水很清涼。', '~~~ 飄飄的', '剛剛在做潛水訓練', '你的咖啡冰嗎？', '聽到水聲就放鬆')
+    'electric' = @('⚡ 又是充滿電的一天！', '靜電有點刺刺的⚡', '你的鍵盤聽起來像在打字呢⚡', '今天的雷雲很有食慾。', '我可以幫你的筆電充電 ⚡', '⚡⚡⚡ 過電中', '雷聲是我的搖籃曲')
+    'grass'    = @('光合作用中... ☘', '土壤的味道真好聞。', '感覺今天會發芽。', '葉子有點蜷起來了', '需要陽光... 開個窗？', '剛剛吸到一口好空氣', '聞到花香了嗎')
+    'ice'      = @('外面好暖，我不喜歡。', '今天我發了冰光線。', '結霜的觸感很棒。', '不要靠太近，會冷。', '冷氣可以再開強一點嗎', '冰塊融化的聲音很療癒', '我看你打字打到手指都冰了')
+    'fighting' = @('💪 訓練時間到！', '想單挑嗎？', '今天的拳頭特別硬。', '出招要快、要狠、要準。', '伏地挺身 100 下完成。', '想跟誰打？', '蛋白質！蛋白質！')
+    'poison'   = @('別碰我喔～', '今天的毒液濃度剛剛好', '聞起來像紫色', '我的觸手有自己的想法', '不要吸這個霧... 開玩笑的', '想咬人但又懶', '黏黏的好舒服')
+    'ground'   = @('土壤鬆軟，挖洞容易。', '今天的地震只有 1 級', '泥土的味道真好', '腳下的塵土告訴我...', '剛挖完一條捷徑', '想堆個沙堡', '岩漿温度今天比較涼')
+    'flying'   = @('飛行中... 風很大', '想看雲嗎？', '從上面看下來，你超小', '今天的天空很藍', '剛剛差點被風吹走', '羽毛掉了一根，撿給你', '高處空氣比較稀薄')
+    'psychic'  = @('我感應到... 你在改 code 嗎', '心靈感應很累', '腦袋有點抽抽的', '預感今天會打贏', '我看見你的瀏覽器有 47 個分頁', '湯匙又彎了 🥄', '專心... 我在 debug 你的潛意識')
+    'bug'      = @('觸角顫動中', '光線好刺眼', '今天我絲很多', '蟲蟲危機！', '你身上有食物味', '六隻腳是不是太多了', '想結繭睡一覺')
+    'rock'     = @('硬硬的，沒事', '岩石不會說話。', '今天的礦物心情不錯', '靜止中...', '我覺得自己是塊好石頭', '不要踢我！', '地質學家會喜歡我')
+    'ghost'    = @('呵呵呵... 👻', '你看得到我嗎', '影子不見了！', '今天適合鬧鬼', 'BOO!', '剛剛從牆裡飄出來', '半夜不要回頭看')
+    'dragon'   = @('龍威壓，發動！', '今天感覺特別強', '想噴一下嗎', '神龍見首不見尾', '我是龍，理當尊重', '逆鱗不要摸', '飛去山頂上修煉')
+}
+
+# Mood-based override lines, type-agnostic. Picked BEFORE type lines if the
+# mood applies. Priority order: streak > defeat > broke > default(type).
+$BuddyMoodLines = @{
+    # current battle streak >= 3 — fired up
+    'streak' = @('連勝中！下一個是誰', '感覺好像不會輸了 ✨', '不要停！', '我手感正好', '繼續打！繼續打！', '我已經 warm up 了')
+    # streak just broken, best > 0 — recovering
+    'defeat' = @('下次會贏的...', '剛剛輸的不算，再來一次', 'tilt 中，深呼吸', '對手有點強，但我們會回來', '我需要一顆 rare candy', '稍微 grind 一下再戰')
+    # coins < 5 — broke
+    'broke'  = @('coin 不夠... 想點辦法', '今天 session cost 比較低？', '錢包空空，去打個 gym 賺一筆', '不要再 pull 了... 拜託', 'shop 看看就好，不要買 master ball')
 }
 
 $buddyBanner = $null
@@ -796,14 +807,18 @@ if ($gachaState -and $gachaState.buddy -and $gachaState.buddy.id) {
     $btype = [string]$gachaState.buddy.type1
     if ($BuddyLines.ContainsKey($btype) -and -not [string]::IsNullOrEmpty($sessionId)) {
         # Decoupled hashes so the 50% gate doesn't bias which lines get picked.
-        # Earlier bug: same hash for both meant gate(h%2==0) constrained h to
-        # even, and pick(h%4) on even h only ever yielded {0, 2} — half the
-        # lines were unreachable. Now: gate uses high bits, pick uses low bits.
+        # Mood overrides type when applicable (priority: streak > defeat > broke > default).
         $h = 0
         foreach ($ch in $sessionId.ToCharArray()) { $h = ($h * 31 + [int]$ch) -band 0x7fffffff }
         $gateBit = ($h -shr 16) -band 1
         if ($gateBit -eq 0) {
-            $lines = $BuddyLines[$btype]
+            $cur = [int]$gachaState.battle_streak_current
+            $best = [int]$gachaState.battle_streak_best
+            $mood = $null
+            if ($cur -ge 3) { $mood = 'streak' }
+            elseif ($cur -eq 0 -and $best -gt 0) { $mood = 'defeat' }
+            elseif ([int]$gachaState.coins -lt 5) { $mood = 'broke' }
+            $lines = if ($mood -and $BuddyMoodLines.ContainsKey($mood)) { $BuddyMoodLines[$mood] } else { $BuddyLines[$btype] }
             $idx = $h % $lines.Count
             $nick = $null
             if ($gachaState.buddy.PSObject.Properties.Name -contains 'nickname' -and $gachaState.buddy.nickname) {
