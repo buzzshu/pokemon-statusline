@@ -278,8 +278,37 @@ $Themes = @{
 # materializes the key. Pricing intent: 1 day of active CC cost (~5-15 coin) buys
 # roughly half a rare-candy, so candies feel earned but not unattainable.
 $Items = [ordered]@{
-    'rare-candy' = @{ name_zh='稀有糖果'; cost=25; glyph='♥'; color='38;5;213'; desc='+10 exp 給 buddy (team[0])';  use='buddy-exp' }
-    'great-ball' = @{ name_zh='高級球';   cost=15; glyph='◎'; color='38;5;39';  desc='下次 /gacha catch 抓取機率 ×1.5 (自動消耗)'; use='catch-boost' }
+    'rare-candy'    = @{ name_zh='稀有糖果';     cost=25;  glyph='♥'; color='38;5;213'; desc='+10 exp 給 buddy (team[0])';                                 use='buddy-exp' }
+    'great-ball'    = @{ name_zh='高級球';       cost=15;  glyph='◎'; color='38;5;39';  desc='下次 /gacha catch 抓取機率 ×1.5 (自動消耗)';                use='catch-boost' }
+    'ultra-ball'    = @{ name_zh='超級球';       cost=30;  glyph='◉'; color='38;5;220'; desc='下次 /gacha catch 抓取機率 ×2 (自動消耗，優先於高級球)';  use='catch-boost' }
+    'master-ball'   = @{ name_zh='大師球';       cost=200; glyph='✦'; color='38;5;213'; desc='下次 /gacha catch 必中 100% (自動消耗，優先於所有球)';     use='catch-boost' }
+    'repel'         = @{ name_zh='驅蟲噴霧';     cost=20;  glyph='⊘'; color='38;5;245'; desc='接下來 10 個 session 不會 spawn wild pokémon';              use='repel' }
+    'fire-stone'    = @{ name_zh='火之石';       cost=50;  glyph='△'; color='38;5;202'; desc='跳過 LV gate 進化 Vulpix / Growlithe';                       use='stone' }
+    'water-stone'   = @{ name_zh='水之石';       cost=50;  glyph='◇'; color='38;5;39';  desc='跳過 LV gate 進化 Poliwhirl / Shellder / Staryu / Eevee';   use='stone' }
+    'thunder-stone' = @{ name_zh='雷之石';       cost=50;  glyph='✦'; color='38;5;226'; desc='跳過 LV gate 進化 Pikachu / Eevee';                          use='stone' }
+    'leaf-stone'    = @{ name_zh='葉之石';       cost=50;  glyph='❀'; color='38;5;46';  desc='跳過 LV gate 進化 Gloom / Weepinbell / Exeggcute';           use='stone' }
+    'moon-stone'    = @{ name_zh='月之石';       cost=50;  glyph='☽'; color='38;5;141'; desc='跳過 LV gate 進化 Clefairy / Jigglypuff / Nidorina / Nidorino'; use='stone' }
+}
+
+# Stone evolution mapping. Only pokemon listed here can use the stone path.
+# Each entry: dex_id -> required stone slug. The stone use-flow finds the team
+# slot with this id (highest exp wins on ties) and evolves it bypassing the
+# canonical LV gate. Eevee defaults to whichever stone the user holds.
+$StoneEvolutions = @{
+    37  = 'fire-stone'     # Vulpix → Ninetales
+    58  = 'fire-stone'     # Growlithe → Arcanine
+    35  = 'moon-stone'     # Clefairy → Clefable
+    39  = 'moon-stone'     # Jigglypuff → Wigglytuff
+    30  = 'moon-stone'     # Nidorina → Nidoqueen
+    33  = 'moon-stone'     # Nidorino → Nidoking
+    25  = 'thunder-stone'  # Pikachu → Raichu
+    44  = 'leaf-stone'     # Gloom → Vileplume
+    70  = 'leaf-stone'     # Weepinbell → Victreebel
+    102 = 'leaf-stone'     # Exeggcute → Exeggutor
+    90  = 'water-stone'    # Shellder → Cloyster
+    61  = 'water-stone'    # Poliwhirl → Poliwrath
+    120 = 'water-stone'    # Staryu → Starmie
+    133 = 'water-stone'    # Eevee → Vaporeon (default; thunder-stone path = same dest since dex only lists one)
 }
 
 # --- Achievement definitions (21 milestones) ---
@@ -555,6 +584,7 @@ function Load-State {
     if ($state.team -and $state.team.Count -gt 0) { Sync-Buddy-From-Team $state }
     # Batch 5: items bag. Lazy-init to empty; missing keys default to 0 on read.
     if (-not $state.Contains('items') -or $null -eq $state.items) { $state.items = [ordered]@{} }
+    if (-not $state.Contains('repel_sessions')) { $state.repel_sessions = 0 }
     return $state
 }
 
@@ -742,19 +772,32 @@ function Catch-Encounter($state) {
     }
     $state.coins = [int]$state.coins - 1
     $rate = Get-CatchRate $id $rarity
-    # Auto-consume one Great Ball if any in bag: 1.5x rate for this attempt only.
-    $usedGreatBall = $false
-    if ((Get-ItemCount $state 'great-ball') -gt 0) {
+    # Ball priority: master > ultra > great > plain. Best one is auto-consumed.
+    $ballUsed = 'plain'
+    if ((Get-ItemCount $state 'master-ball') -gt 0) {
+        Remove-BagItem $state 'master-ball' 1 | Out-Null
+        $rate = 1.0   # guaranteed
+        $ballUsed = 'master'
+    } elseif ((Get-ItemCount $state 'ultra-ball') -gt 0) {
+        Remove-BagItem $state 'ultra-ball' 1 | Out-Null
+        $rate = [Math]::Min(1.0, $rate * 2.0)
+        $ballUsed = 'ultra'
+    } elseif ((Get-ItemCount $state 'great-ball') -gt 0) {
         Remove-BagItem $state 'great-ball' 1 | Out-Null
         $rate = [Math]::Min(1.0, $rate * 1.5)
-        $usedGreatBall = $true
+        $ballUsed = 'great'
     }
     $roll = (Get-Random -Maximum 10000) / 10000.0
     $caught = ($roll -lt $rate)
     $glyph = Color $TypeColor[$poke.type1] "$($TypeGlyph[$poke.type1])"
     $name = Color '38;5;255' $poke.name_zh
     Print ''
-    $ballTag = if ($usedGreatBall) { Color '1;38;5;39' '>> GREAT BALL THROWN <<' } else { Dim '>> POKE BALL THROWN <<' }
+    $ballTag = switch ($ballUsed) {
+        'master' { Color '1;38;5;213' '>> MASTER BALL THROWN <<' }
+        'ultra'  { Color '1;38;5;220' '>> ULTRA BALL THROWN <<' }
+        'great'  { Color '1;38;5;39'  '>> GREAT BALL THROWN <<' }
+        default  { Dim '>> POKE BALL THROWN <<' }
+    }
     Print "  $ballTag"
     Start-Sleep -Milliseconds 400
     Print "  $(Dim '...shake...')"
@@ -1661,7 +1704,71 @@ function Use-Item($state, [string]$slug) {
             Print ''
         }
         'catch-boost' {
-            Print "  $(Dim '高級球會在下次 /gacha catch 時自動使用，不用手動 use。')"
+            Print "  $(Dim "$($it.name_zh) 會在下次 /gacha catch 時自動使用，不用手動 use。")"
+            Print ''
+        }
+        'repel' {
+            Remove-BagItem $state $s 1 | Out-Null
+            $existing = if ($state.repel_sessions) { [int]$state.repel_sessions } else { 0 }
+            $state.repel_sessions = $existing + 10
+            $g = Color $it.color "$($it.glyph)"
+            Print ''
+            Print "  $g 使用 $(Color '1;38;5;255' $it.name_zh) — 接下來 $(Color '1;38;5;220' "$($state.repel_sessions) 個 session") 不會 spawn wild pokémon"
+            Print "  $(Dim "剩 $(Get-ItemCount $state $s) 個。已 pending encounter 不受影響。")"
+            Print ''
+        }
+        'stone' {
+            # Find the team slot whose dex_id maps to THIS stone (StoneEvolutions),
+            # take the one with highest exp; bypass LV gate; evolve in place.
+            if (-not $state.team -or $state.team.Count -eq 0) {
+                Print (Color '38;5;196' 'Team is empty.')
+                return
+            }
+            $bestIdx = -1
+            $bestExp = -1
+            for ($i = 0; $i -lt $state.team.Count; $i++) {
+                $tid = [int]$state.team[$i].id
+                if ($StoneEvolutions.ContainsKey($tid) -and $StoneEvolutions[$tid] -eq $s) {
+                    if ([int]$state.team[$i].exp -gt $bestExp) {
+                        $bestExp = [int]$state.team[$i].exp
+                        $bestIdx = $i
+                    }
+                }
+            }
+            if ($bestIdx -lt 0) {
+                $eligible = ($StoneEvolutions.Keys | Where-Object { $StoneEvolutions[$_] -eq $s } | ForEach-Object { "#$('{0:D3}' -f $_) $($Dex[[string]$_].name_zh)" }) -join ', '
+                Print (Color '38;5;196' "Team 裡沒有可以用 $($it.name_zh) 進化的寶可夢. 可用對象：$eligible")
+                return
+            }
+            $slot = $state.team[$bestIdx]
+            $tid = [int]$slot.id
+            $poke = $Dex[[string]$tid]
+            if ($null -eq $poke.evolves_to) {
+                Print (Color '38;5;196' "$($poke.name_zh) 沒有可進化路徑 (dex 資料異常).")
+                return
+            }
+            $hadShiny = [bool]$slot.shiny
+            Remove-BagItem $state $s 1 | Out-Null
+            Remove-Owned $state $tid 1 | Out-Null
+            if ($hadShiny -and $state.owned.Contains([string]$tid) -and [int]$state.owned[[string]$tid].shiny_count -gt 0) {
+                $state.owned[[string]$tid].shiny_count = [int]$state.owned[[string]$tid].shiny_count - 1
+            }
+            Add-Owned $state ([int]$poke.evolves_to) $hadShiny
+            $state.stats.evolutions_done = [int]$state.stats.evolutions_done + 1
+            $state.team[$bestIdx].id = [int]$poke.evolves_to
+            $state.team[$bestIdx].shiny = $hadShiny
+            if ($bestIdx -eq 0) { Sync-Buddy-From-Team $state }
+
+            $next = $Dex[[string]$poke.evolves_to]
+            $g  = Color $it.color "$($it.glyph)"
+            $g1 = Color $TypeColor[$poke.type1] "$($TypeGlyph[$poke.type1])"
+            $g2 = Color $TypeColor[$next.type1] "$($TypeGlyph[$next.type1])"
+            $shinyTag = if ($hadShiny) { Gold ' *shiny preserved*' } else { '' }
+            $slotTag = "$(Dim "(slot $($bestIdx + 1), kept exp $([int]$slot.exp))")"
+            Print ''
+            Print "  $g 使用 $(Color '1;38;5;255' $it.name_zh)"
+            Print "  $g1 $($poke.name_zh) (#$tid) $ARROW $g2 $(Color '1;38;5;255' $next.name_zh) (#$($next.id))$shinyTag  $slotTag"
+            Print "  $(Dim "剩 $(Get-ItemCount $state $s) 個.  Note: 沒消耗 coin，這是石頭的優勢。")"
             Print ''
         }
         default {

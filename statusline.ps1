@@ -148,16 +148,28 @@ if ($gachaState) {
                     }
                 }
             }
-            # Wild encounter roll: 1% per new session. Only if no encounter pending.
+            # Repel countdown: if user used /gacha use repel, skip encounter rolls for N sessions.
+            $repelLeft = if ($null -ne $fresh.repel_sessions) { [int]$fresh.repel_sessions } else { 0 }
+            $repelActive = $repelLeft -gt 0
+            if ($repelActive) { $fresh.repel_sessions = $repelLeft - 1 }
+
+            # Wild encounter roll: 3% per new session. Only if no encounter pending AND no repel.
             # Pyramid pool C 60 / U 25 / R 12 / HR 3 — HR (legendaries) ONLY appear here.
+            # Bumped from 1% to 3% in same commit as the pool-iteration bug fix: at 1%
+            # plus the prior bug, the user had ~677 sessions with zero encounters.
             $hasEncounter = ($fresh.encounter -and $fresh.encounter.id -and [int]$fresh.encounter.id -gt 0)
-            if (-not $hasEncounter -and (Get-Random -Maximum 100) -lt 1) {
+            if (-not $repelActive -and -not $hasEncounter -and (Get-Random -Maximum 100) -lt 3) {
                 $rRoll = Get-Random -Maximum 100
                 $eRarity = if ($rRoll -lt 3) { 'HR' } elseif ($rRoll -lt 15) { 'R' } elseif ($rRoll -lt 40) { 'U' } else { 'C' }
-                # Pick random id from rarity pool by iterating $dex
+                # Pick random id from rarity pool. $dex.pokemon is an array of positional
+                # rows [id, name_en, name_zh, type1, type2, stage, evolves_to, rarity, pullable, evolve_level]
+                # so rarity is row[7], id is row[0]. PRE-FIX BUG: iterated $dex directly
+                # (a single JSON object) so $pool was always empty and encounters never spawned.
                 $pool = @()
-                foreach ($p in $dex) {
-                    if ([string]$p.rarity -eq $eRarity) { $pool += [int]$p.id }
+                if ($dex -and $dex.pokemon) {
+                    foreach ($p in $dex.pokemon) {
+                        if ([string]$p[7] -eq $eRarity) { $pool += [int]$p[0] }
+                    }
                 }
                 if ($pool.Count -gt 0) {
                     $eid = $pool[(Get-Random -Maximum $pool.Count)]
