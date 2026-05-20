@@ -21,18 +21,41 @@ Four reasons to spawn a new tab instead of running inline:
 
 Spawn the engine in a new Windows Terminal tab so the user sees the full output live.
 
-1. Spawn the new tab (use the PowerShell tool). Build the argv as an array so it survives Windows command-line quoting:
+1. **Sample the pre-spawn state** so you can detect when the engine wrote its mutation. Use the appropriate stats counter for the command type:
+   - `pull` / `pulls N` → `state.stats.pulls_total`
+   - `trade` → `state.stats.trades_done`
+   - `album` / `gallery` / `gym N` → these don't mutate the same counter; just fixed-sleep ~3-6s for these (see step 2b)
+
+   ```powershell
+   $stateFile = "$env:USERPROFILE\.claude\gacha-state.json"
+   $pre = (Get-Content $stateFile -Raw -Encoding UTF8 | ConvertFrom-Json).stats.pulls_total
+   ```
+
+2. Spawn the new tab. Build the argv as an array so it survives Windows command-line quoting:
 
    ```powershell
    $wtArgs = @('new-tab', '-d', "$env:USERPROFILE", 'powershell', '-NoProfile', '-NoExit', '-ExecutionPolicy', 'Bypass', '-File', "$env:USERPROFILE\.claude\scripts\gacha.ps1") + ($ARGUMENTS -split ' ')
    Start-Process wt.exe -ArgumentList $wtArgs
    ```
 
-2. Wait ~2.5s for the reveal animation + state writeback to finish:
+2a. **For `pull`/`pulls`/`trade`**: poll the counter for up to 8s instead of a fixed sleep. The engine saves state IMMEDIATELY after mutation (before the ~2s sprite-reveal animation) so the counter advances within ~200ms of the child process starting. Polling makes the skill robust on slow systems and detects silent wt-spawn failures (no advance after 8s = user should retry):
 
    ```powershell
-   Start-Sleep -Milliseconds 2500
+   $deadline = [DateTime]::Now.AddSeconds(8)
+   do {
+       Start-Sleep -Milliseconds 300
+       $now = (Get-Content $stateFile -Raw -Encoding UTF8 | ConvertFrom-Json).stats.pulls_total
+   } while ($now -le $pre -and [DateTime]::Now -lt $deadline)
+   if ($now -le $pre) {
+       # wt spawn likely failed silently — tell the user; do NOT retry inline
+       # (that would double-charge if wt is just slow and eventually fires).
+       Write-Warning "wt tab didn't fire within 8s. Retry the command if state still hasn't advanced."
+   }
    ```
+
+2b. **For `album`/`gallery`/`gym N`** (no easy counter to poll): fall back to a fixed sleep tuned to the command's runtime:
+   - `album`/`gallery`: 3000ms (just sprite scrolling, no state mutation)
+   - `gym N`: 35000ms (battle takes 20-30s with reveal animation)
 
 3. Read the result from the shared state file and report inline (one or two short sentences) so the chat keeps context. The fields you care about live in `%USERPROFILE%\.claude\gacha-state.json`:
 

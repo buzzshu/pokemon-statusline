@@ -941,6 +941,14 @@ function Pull-Pack($state, [bool]$silent = $false) {
     }
 
     if (-not $silent) {
+        # Persist state BEFORE the ~2s reveal animation. The /gacha skill polls
+        # state.stats.pulls_total to know when the pull "completed"; without this
+        # early save, the poll has to wait for the entire animation + dispatcher's
+        # final Save-State, which is racy with the skill's fixed-sleep timeout.
+        # Outer dispatch will still Save-State at end (cheap, idempotent under
+        # the mutex we already hold).
+        Save-State $state
+
         $c = $cards[0]   # 1-card pack
         $poke = $Dex[[string]$c.id]
 
@@ -2081,6 +2089,10 @@ function Trade-Dupes($state) {
     $state.stats.trades_done = [int]$state.stats.trades_done + 1
 
     $reward = $Dex[[string]$rewardId]
+    # Persist before the ~3s trade animation — same reason as Pull-Pack: skill
+    # polls state.stats.trades_done and shouldn't wait for animation to finish.
+    Save-State $state
+
     Print ''
     Print (Bold "=== Trading... ===")
     Print ''
