@@ -33,10 +33,10 @@ Spawn the engine in a new Windows Terminal tab so the user sees the full output 
    $pre = (Get-Content $stateFile -Raw -Encoding UTF8 | ConvertFrom-Json).stats.pulls_total
    ```
 
-2. Spawn the new tab. Build the argv as an array so it survives Windows command-line quoting. **`-w 0 nt`** (instead of plain `new-tab`) targets the most-recently-focused wt window AND raises it — without `-w 0`, the tab opens in whatever wt window already exists but doesn't grab focus, so a minimized/off-screen wt swallows the animation invisibly:
+2. Spawn the new tab in a **named window** `gacha` so every animation lands in the same wt window — first call creates a window named `gacha`, subsequent calls add tabs to it instead of spawning fresh windows. Without `-w gacha`, repeated `/gacha pull` etc. each opened a brand-new wt window:
 
    ```powershell
-   $wtArgs = @('-w', '0', 'nt', '-d', "$env:USERPROFILE", 'powershell', '-NoProfile', '-NoExit', '-ExecutionPolicy', 'Bypass', '-File', "$env:USERPROFILE\.claude\scripts\gacha.ps1") + ($ARGUMENTS -split ' ')
+   $wtArgs = @('-w', 'gacha', 'nt', '-d', "$env:USERPROFILE", 'powershell', '-NoProfile', '-NoExit', '-ExecutionPolicy', 'Bypass', '-File', "$env:USERPROFILE\.claude\scripts\gacha.ps1") + ($ARGUMENTS -split ' ')
    Start-Process wt.exe -ArgumentList $wtArgs
    ```
 
