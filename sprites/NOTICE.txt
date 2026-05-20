@@ -1,0 +1,28 @@
+Pokemon sprite ANSI files in `regular/` are vendored from:
+
+  https://gitlab.com/phoneybadger/pokemon-colorscripts
+  colorscripts/small/regular/<name> (renamed to <id>.txt)
+
+License (per upstream LICENSE.txt):
+
+  Copyright (c) 2021 phoneybadger <phoneybadgercode.4ikc7@simplelogin.co>
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in
+  all copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
+
+Pokemon names/likenesses remain trademarks of Nintendo / Game Freak /
+The Pokemon Company. Sprites are derived from official Game Freak pixel art.
+
+Files are gen-1 (id 1..151) only; the upstream repo carries gen 1-8.
+Filename = `{dex-id}.txt` (e.g., `25.txt` = Pikachu). Each file contains
+ANSI 24-bit color escape sequences using U+2580 (upper half block) for
+2-vertical-pixels-per-character rendering. Display in any terminal that
+supports truecolor + UTF-8 (Windows Terminal, iTerm2, modern xterm).
