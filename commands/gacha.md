@@ -11,10 +11,11 @@ The engine lives globally at `%USERPROFILE%\.claude\scripts\gacha.ps1` and reads
 
 Branch on what `$ARGUMENTS` starts with:
 
-### A. New-tab class (`pull`, `pulls <N>`, `album`, `gallery`, `gym <N>`) → open a new Windows Terminal tab
+### A. New-tab class (`pull`, `pulls <N>`, `trade`, `album`, `gallery`, `gym <N>`) → open a new Windows Terminal tab
 
-Three reasons to spawn a new tab instead of running inline:
+Four reasons to spawn a new tab instead of running inline:
 - `pull` / `pulls N` — Claude Code buffers stdout so the 90ms-per-line reveal animation is invisible inline.
+- `trade` — same reveal animation as pull (R reward sprite drops line-by-line at 90ms after the 5 dupes are listed).
 - `album` / `gallery` — 86+ lines of sprite art exceeds Claude Code's tool result preview and gets truncated.
 - `gym N` — turn-by-turn battle animation has 600-800ms per line; full battle is many seconds of reveal which gets buffered/truncated inline.
 
@@ -47,7 +48,7 @@ Spawn the engine in a new Windows Terminal tab so the user sees the full output 
    - HR or shiny pulled → small celebration line.
    - `Not enough coins` will surface in the tab; mirror it inline so the user notices without switching focus.
 
-### B. Everything else (`status`, `buddy <ID>`, `team ...`, `evolve <ID>`, `trade`, `dex`, `help`) → run inline
+### B. Everything else (`status`, `buddy <ID>`, `team ...`, `evolve <ID>`, `dex`, `help`) → run inline
 
 These don't have an animation — they're one-shot prints. Just invoke the engine via the PowerShell tool:
 

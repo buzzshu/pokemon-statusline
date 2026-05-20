@@ -1827,10 +1827,29 @@ function Trade-Dupes($state) {
 
     $reward = $Dex[[string]$rewardId]
     Print ''
-    Print (Bold "=== Trade-in complete ===")
+    Print (Bold "=== Trading... ===")
     Print ''
-    $tradedNames = ($picked | ForEach-Object { $Dex[[string]$_].name_zh }) -join ', '
-    Print "  Traded: $tradedNames"
+    # List the 5 dupes being given up, one at a time, with a small pause so the
+    # player feels the cost. Each name colored by its own type for flavor.
+    foreach ($pid in $picked) {
+        $p = $Dex[[string]$pid]
+        $g = Color $TypeColor[$p.type1] "$($TypeGlyph[$p.type1])"
+        Print "  $(Dim '↪') $g #$('{0:D3}' -f [int]$pid) $(Color '38;5;245' $p.name_zh)"
+        Start-Sleep -Milliseconds 250
+    }
+    Print ''
+    Print (Dim "  $SPARKLE  Transmuting $SPARKLE  ...")
+    Start-Sleep -Milliseconds 600
+    Print ''
+    # Reveal reward sprite line-by-line (same pacing as Pull-Pack)
+    $spritePath = Join-Path $ClaudeDir "sprites\regular\$([int]$rewardId).txt"
+    if (Test-Path $spritePath) {
+        Get-Content $spritePath -Encoding UTF8 | ForEach-Object {
+            Print $_
+            Start-Sleep -Milliseconds 90
+        }
+    }
+    Start-Sleep -Milliseconds 300
     Print ''
     Print "  Reward:$(Format-CardLine $reward $isShiny 'R' $wasZero)"
     Print ''
