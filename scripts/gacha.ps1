@@ -2494,23 +2494,12 @@ function Challenge-Gym($state, [int]$gymIdx) {
 
     if ($result -eq 'A') {
         Print (Color '1;38;5;82' "★ 勝利！你打贏 $($gym.leader_name)，獲得 $($gym.badge)！")
+        # By design exp DOES NOT drop from gym wins — exp comes from session ticks
+        # (passive use of CC) or rare-candy purchases (active coin spend). If gym
+        # battles awarded exp, you could grind levels offline, breaking the
+        # "resources tied to AI usage" loop.
         $coinReward = $aceLvl * 2
-        $leadExp = $aceLvl
-        $sideExp = [int][Math]::Floor($aceLvl / 4)
         $state.coins = [int]$state.coins + $coinReward
-        # Team[0] (buddy) gets full reward; other slots get the side-exp ONLY
-        # if they survived (hp_cur > 0 in the userTeam combatant we built).
-        $sideAwarded = 0
-        if ($state.team -and $state.team.Count -gt 0) {
-            $state.team[0].exp = [int]$state.team[0].exp + $leadExp
-            for ($i = 1; $i -lt [Math]::Min($state.team.Count, $userTeam.Count); $i++) {
-                if ([int]$userTeam[$i].hp_cur -gt 0) {
-                    $state.team[$i].exp = [int]$state.team[$i].exp + $sideExp
-                    $sideAwarded++
-                }
-            }
-            Sync-Buddy-From-Team $state
-        }
         if (-not $state.gyms_beaten) { $state.gyms_beaten = @() }
         if (-not ($state.gyms_beaten -contains $gymIdx)) {
             $state.gyms_beaten += $gymIdx
@@ -2520,8 +2509,8 @@ function Challenge-Gym($state, [int]$gymIdx) {
             $state.battle_streak_best = [int]$state.battle_streak_current
         }
         Print ""
-        $sideTag = if ($sideAwarded -gt 0) { "  +$sideExp exp × $sideAwarded 倖存隊員" } else { '' }
-        Print (Dim "  獎勵：+$coinReward coins (ace LV × 2)  ·  +$leadExp exp to buddy$sideTag  ·  streak $($state.battle_streak_current) (best $($state.battle_streak_best))")
+        Print (Dim "  獎勵：+$coinReward coins (ace LV × 2)  ·  streak $($state.battle_streak_current) (best $($state.battle_streak_best))")
+        Print (Dim "  Tip: exp 只能透過 session 累積或 /gacha buy rare-candy 換取")
         Print (Dim "  進度：$($state.gyms_beaten.Count)/8 道館攻略")
     } elseif ($result -eq 'B') {
         Print (Color '1;38;5;196' "✕ 戰敗。隊伍全滅，下次再來。")
@@ -2749,21 +2738,9 @@ function Challenge-Elite($state, [int]$idx) {
 
     if ($result -eq 'A') {
         Print (Color '1;38;5;82' "★ 勝利！你打敗了 $($e.leader_name)！")
+        # Same design rule as gym battles: no exp from battle wins. Coins only.
         $coinReward = ($e.levels | Measure-Object -Maximum).Maximum * 5
-        $leadExp = ($e.levels | Measure-Object -Maximum).Maximum * 2
-        $sideExp = [int][Math]::Floor($leadExp / 4)
         $state.coins = [int]$state.coins + $coinReward
-        $sideAwarded = 0
-        if ($state.team -and $state.team.Count -gt 0) {
-            $state.team[0].exp = [int]$state.team[0].exp + $leadExp
-            for ($i = 1; $i -lt [Math]::Min($state.team.Count, $userTeam.Count); $i++) {
-                if ([int]$userTeam[$i].hp_cur -gt 0) {
-                    $state.team[$i].exp = [int]$state.team[$i].exp + $sideExp
-                    $sideAwarded++
-                }
-            }
-            Sync-Buddy-From-Team $state
-        }
         if (-not $state.elite_beaten) { $state.elite_beaten = @() }
         if (-not ($state.elite_beaten -contains $idx)) {
             $state.elite_beaten += $idx
@@ -2773,9 +2750,8 @@ function Challenge-Elite($state, [int]$idx) {
             $state.battle_streak_best = [int]$state.battle_streak_current
         }
         Print ''
-        $sideTag = if ($sideAwarded -gt 0) { "  +$sideExp exp × $sideAwarded 倖存隊員" } else { '' }
-        Print (Dim "  獎勵：+$coinReward coins  ·  +$leadExp exp to buddy$sideTag  ·  streak $($state.battle_streak_current) (best $($state.battle_streak_best))")
-        Print (Dim "  進度：$($state.elite_beaten.Count)/5 天王/冠軍")
+        Print (Dim "  獎勵：+$coinReward coins  ·  streak $($state.battle_streak_current) (best $($state.battle_streak_best))")
+        Print (Dim "  進度：$($state.elite_beaten.Count)/5 天王/冠軍  ·  exp 來源：session / rare-candy")
     } elseif ($result -eq 'B') {
         Print (Color '1;38;5;196' "✕ 戰敗。天王太強，回去再練吧。")
         Print (Dim "  Tips: 帶滿 6 隻、覆蓋多種屬性、用 Lucky Egg 加速練功. streak 0 (best $($state.battle_streak_best)).")
