@@ -35,6 +35,7 @@ $layout = @(
     @{ rel = 'statusline.ps1' },
     @{ rel = 'pokemon-dex.json' },
     @{ rel = 'pokemon-stats.json' },
+    @{ rel = 'pokemon-flavor.json' },
     @{ rel = 'scripts\gacha.ps1' },
     @{ rel = 'commands\gacha.md' },
     @{ rel = 'skills\gacha\SKILL.md' }

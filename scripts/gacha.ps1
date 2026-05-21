@@ -736,6 +736,20 @@ function Show-Event {
     Print ''
 }
 
+# --- Pokedex flavor text (Gen 1 R/B/Y, condensed to zh-TW) keyed by id ---
+$FlavorFile = Join-Path $ClaudeDir 'pokemon-flavor.json'
+$Flavor = @{}
+if (Test-Path $FlavorFile) {
+    try {
+        $FlavorRaw = Get-Content $FlavorFile -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($FlavorRaw.flavor) {
+            foreach ($p in $FlavorRaw.flavor.PSObject.Properties) {
+                $Flavor[[string]$p.Name] = [string]$p.Value
+            }
+        }
+    } catch {}
+}
+
 # --- Base stats (Gen 1, Gen 2+ split convention) keyed by id ---
 $Stats = @{}
 if (Test-Path $StatsFile) {
@@ -864,6 +878,9 @@ function Load-State {
     if (-not $state.Contains('current_frame') -or [string]::IsNullOrWhiteSpace($state.current_frame)) { $state.current_frame = 'gold' }
     # Derived: cached power level for statusline (real recompute happens on Save-State)
     if (-not $state.Contains('power_level')) { $state.power_level = 0 }
+    # Pull history ring buffer (capped to 50 most-recent entries)
+    if (-not $state.Contains('pull_history') -or $null -eq $state.pull_history) { $state.pull_history = @() }
+    if ($state.pull_history -isnot [array]) { $state.pull_history = @($state.pull_history) }
     # coins_peak high-water: bump whenever we see a higher current balance.
     if ([int]$state.coins -gt [int]$state.stats.coins_peak) { $state.stats.coins_peak = [int]$state.coins }
     return $state
@@ -1264,6 +1281,24 @@ function Pull-Pack($state, [bool]$silent = $false) {
             shiny   = [bool]$bestCard.shiny
             when    = (Get-Date -Format 'yyyy-MM-ddTHH:mm:ssZ')
         }
+    }
+    # Append each card to pull_history (capped at 50). Single-pack = 1 entry,
+    # multi-pull = N entries. NEW flag captured per card before bag mutation.
+    if (-not $state.pull_history) { $state.pull_history = @() }
+    foreach ($c in $cards) {
+        $hp = $Dex[[string]$c.id]
+        $entry = [ordered]@{
+            id      = [int]$c.id
+            name_zh = $hp.name_zh
+            rarity  = [string]$c.rarity
+            shiny   = [bool]$c.shiny
+            new     = [bool]$newSet[[string]$c.id]
+            when    = (Get-Date -Format 'yyyy-MM-ddTHH:mm:ssZ')
+        }
+        $state.pull_history = @($state.pull_history) + ,$entry
+    }
+    if ($state.pull_history.Count -gt 50) {
+        $state.pull_history = @($state.pull_history[-50..-1])
     }
 
     if (-not $silent) {
@@ -1667,6 +1702,62 @@ function Show-Stats($state, [int]$id) {
         $bar = (Color $col ([string][char]0x2588 * $cells)) + (Color '38;5;238' ([string][char]0x2592 * (20 - $cells)))
         Print "  $(Color '38;5;245' $e.label)  $bar  $(Color $col ('{0,3}' -f $v))"
     }
+    if ($Flavor.ContainsKey($key)) {
+        Print ''
+        Print "  $(Color '38;5;111' '圖鑑說明:') $(Color '38;5;255' $Flavor[$key])"
+    }
+    Print ''
+}
+
+# Side-by-side stat compare between two species. Reads only $Dex + $Stats; no state mutation.
+function Show-Compare($state, [int]$idA, [int]$idB) {
+    $kA = [string]$idA; $kB = [string]$idB
+    if (-not $Dex.ContainsKey($kA)) { Print (Color '38;5;196' "Unknown pokemon id: $idA"); return }
+    if (-not $Dex.ContainsKey($kB)) { Print (Color '38;5;196' "Unknown pokemon id: $idB"); return }
+    if (-not $Stats.ContainsKey($kA)) { Print (Color '38;5;196' "No stats data for #$idA."); return }
+    if (-not $Stats.ContainsKey($kB)) { Print (Color '38;5;196' "No stats data for #$idB."); return }
+    $pA = $Dex[$kA]; $pB = $Dex[$kB]
+    $sA = $Stats[$kA]; $sB = $Stats[$kB]
+    $gA = Color $TypeColor[$pA.type1] "$($TypeGlyph[$pA.type1])"
+    $gB = Color $TypeColor[$pB.type1] "$($TypeGlyph[$pB.type1])"
+    $tA = if ($pA.type2) { "$($pA.type1)/$($pA.type2)" } else { $pA.type1 }
+    $tB = if ($pB.type2) { "$($pB.type1)/$($pB.type2)" } else { $pB.type1 }
+
+    Print ''
+    Print (Bold "=== 比較 #$('{0:D3}' -f $idA) vs #$('{0:D3}' -f $idB) ===")
+    Print ''
+    Print "  A: $gA #$('{0:D3}' -f $idA) $(Color '38;5;255' $pA.name_zh)  $(Dim "($tA · BST $($sA.bst))")"
+    Print "  B: $gB #$('{0:D3}' -f $idB) $(Color '38;5;255' $pB.name_zh)  $(Dim "($tB · BST $($sB.bst))")"
+    Print ''
+    Print "  $(Color '38;5;245' '       A          B     勝')"
+    $entries = @(
+        @{ label='HP '; a=[int]$sA.hp;  b=[int]$sB.hp  },
+        @{ label='ATK'; a=[int]$sA.atk; b=[int]$sB.atk },
+        @{ label='DEF'; a=[int]$sA.def; b=[int]$sB.def },
+        @{ label='SpA'; a=[int]$sA.spa; b=[int]$sB.spa },
+        @{ label='SpD'; a=[int]$sA.spd; b=[int]$sB.spd },
+        @{ label='Spd'; a=[int]$sA.spe; b=[int]$sB.spe }
+    )
+    $aWins = 0; $bWins = 0
+    foreach ($e in $entries) {
+        $cmp = if ($e.a -gt $e.b) { '>'; $aWins++ } elseif ($e.a -lt $e.b) { '<'; $bWins++ } else { '=' }
+        $winLabel = switch ($cmp) {
+            '>' { Color '1;38;5;82'  'A' }
+            '<' { Color '1;38;5;208' 'B' }
+            default { Color '38;5;245' '=' }
+        }
+        $aCol = if ($e.a -gt $e.b) { '1;38;5;82' } else { '38;5;245' }
+        $bCol = if ($e.b -gt $e.a) { '1;38;5;82' } else { '38;5;245' }
+        $aStr = '{0,3}' -f $e.a
+        $bStr = '{0,3}' -f $e.b
+        Print "  $(Color '38;5;111' $e.label)  $(Color $aCol $aStr)  $(Color '38;5;245' $cmp)  $(Color $bCol $bStr)    $winLabel"
+    }
+    Print ''
+    $bstCmp = if ($sA.bst -gt $sB.bst) { '>' } elseif ($sA.bst -lt $sB.bst) { '<' } else { '=' }
+    $bstWin = switch ($bstCmp) { '>' { 'A' } '<' { 'B' } default { '=' } }
+    Print "  $(Color '1;38;5;220' 'BST')  $(Color '38;5;245' ('{0,3}' -f $sA.bst))  $(Color '38;5;245' $bstCmp)  $(Color '38;5;245' ('{0,3}' -f $sB.bst))    $(Color '1;38;5;226' $bstWin)"
+    Print ''
+    Print "  $(Dim "stat 勝場 A=$aWins · B=$bWins · 平=$((6 - $aWins - $bWins))")"
     Print ''
 }
 
@@ -2870,7 +2961,47 @@ function Trade-Dupes($state) {
     Print ''
 }
 
-function Show-Dex($state) {
+function Show-Dex($state, $filterArgs = @()) {
+    # When filters are present, render as a list (like bag) rather than the 1-151
+    # grid — grid layout doesn't compose with predicates.
+    $filters = Parse-PokemonFilters $filterArgs
+    if ($filters.unknown.Count -gt 0) { Print "  $(Color '38;5;196' "Unknown filter(s):") $(Dim ($filters.unknown -join ', '))" }
+    $hadFilter = ($filters.types.Count + $filters.rarities.Count + $filters.flags.Count) -gt 0
+    if ($hadFilter) {
+        $teamSet = @{}
+        if ($state.team) { foreach ($t in $state.team) { $teamSet[[int]$t.id] = $true } }
+        $rows = @()
+        foreach ($k in $state.owned.Keys) {
+            $isCaught = ($null -ne $state.owned[$k].first_caught)
+            if (-not $isCaught) { continue }
+            if (-not $Dex.ContainsKey($k)) { continue }
+            $rows += [pscustomobject]@{
+                id          = [int]$k
+                count       = [int]$state.owned[$k].count
+                shiny_count = [int]$state.owned[$k].shiny_count
+                poke        = $Dex[$k]
+            }
+        }
+        $rows = @($rows | Where-Object { Match-PokemonFilter $_.poke $_.count $_.shiny_count ($teamSet.ContainsKey($_.id)) $filters } | Sort-Object id)
+        Print ''
+        Print (Bold "=== Pokedex (filtered, $($rows.Count) matches) ===")
+        Print (Format-FilterHeader $filters)
+        Print ''
+        if ($rows.Count -eq 0) { Print "  $(Dim '(no match)')"; Print ''; return }
+        foreach ($r in $rows) {
+            $p = $r.poke
+            $glyph = Color $TypeColor[$p.type1] "$($TypeGlyph[$p.type1])"
+            $name = if ($r.shiny_count -gt 0) { Gold $p.name_zh } else { Color '38;5;255' $p.name_zh }
+            $cntTag = if ($r.count -gt 0) { Color '38;5;245' " x$($r.count)" } else { Dim ' (released)' }
+            $shinyTag = if ($r.shiny_count -gt 0) { Color '1;38;5;220' ' ✦' } else { '' }
+            $rarityTag = ' ' + (Color $RarityColor[$p.rarity] "[$($p.rarity)]")
+            $teamTag = if ($teamSet.ContainsKey($r.id)) { ' ' + (Color '38;5;141' '*team') } else { '' }
+            Print "  $glyph #$('{0:D3}' -f $r.id) $name$cntTag$shinyTag$rarityTag$teamTag"
+        }
+        Print ''
+        return
+    }
+
     # Dex = ever-caught (first_caught != null). Independent of current bag count:
     # a pokemon evolved/traded away stays in the dex.
     $total = 151
@@ -2925,7 +3056,55 @@ function Show-Dex($state) {
     Print ''
 }
 
-function Show-Bag($state) {
+# Positional filter parser. Accepts mixed args: type names (water/fire/...),
+# rarity codes (C/U/R/HR/U+/R+), and flag words (shiny/team/not-team/unique).
+# Returns @{ types=@(); rarities=@(); flags=@(); raw=$args }.
+$KnownTypes = @('normal','fire','water','electric','grass','ice','fighting','poison','ground','flying','psychic','bug','rock','ghost','dragon','fairy')
+function Parse-PokemonFilters($argList) {
+    $f = @{ types=@(); rarities=@(); flags=@(); unknown=@() }
+    foreach ($a in $argList) {
+        if ([string]::IsNullOrWhiteSpace($a)) { continue }
+        $lc = ([string]$a).Trim().ToLower()
+        if ($KnownTypes -contains $lc)            { $f.types += $lc; continue }
+        if ($lc -in @('c','u','r','hr'))          { $f.rarities += $lc.ToUpper(); continue }
+        if ($lc -eq 'u+')                          { $f.rarities += @('U','R','HR'); continue }
+        if ($lc -eq 'r+')                          { $f.rarities += @('R','HR'); continue }
+        if ($lc -in @('shiny','team','not-team','unique','dupes','new')) { $f.flags += $lc; continue }
+        $f.unknown += $a
+    }
+    return $f
+}
+function Match-PokemonFilter($poke, [int]$count, [int]$shinyCount, [bool]$inTeam, $filters) {
+    if ($filters.types.Count -gt 0) {
+        $matchType = $false
+        foreach ($t in $filters.types) {
+            if ($poke.type1 -eq $t -or $poke.type2 -eq $t) { $matchType = $true; break }
+        }
+        if (-not $matchType) { return $false }
+    }
+    if ($filters.rarities.Count -gt 0 -and ($filters.rarities -notcontains $poke.rarity)) { return $false }
+    foreach ($flag in $filters.flags) {
+        switch ($flag) {
+            'shiny'    { if ($shinyCount -le 0) { return $false } }
+            'team'     { if (-not $inTeam) { return $false } }
+            'not-team' { if ($inTeam) { return $false } }
+            'unique'   { if ($count -gt 1) { return $false } }
+            'dupes'    { if ($count -le 1) { return $false } }
+            'new'      { } # noop: dex-only flag handled elsewhere
+        }
+    }
+    return $true
+}
+function Format-FilterHeader($filters) {
+    $bits = @()
+    foreach ($t in $filters.types)    { $bits += (Color $TypeColor[$t] $t.ToUpper()) }
+    foreach ($r in ($filters.rarities | Select-Object -Unique)) { $bits += (Color $RarityColor[$r] "[$r]") }
+    foreach ($f in $filters.flags)    { $bits += (Color '1;38;5;226' $f) }
+    if ($bits.Count -eq 0) { return '' }
+    return '  ' + (Dim 'filter:') + ' ' + ($bits -join ' ')
+}
+
+function Show-Bag($state, $filterArgs = @()) {
     # Bag = current holdings (count > 0). Independent of dex (ever-caught).
     # Lists every species with at least one copy, with x-count, shiny tag,
     # and "*team" marker if any copy is currently slotted in the team.
@@ -2958,9 +3137,23 @@ function Show-Bag($state) {
     $teamSet = @{}
     if ($state.team) { foreach ($t in $state.team) { $teamSet[[int]$t.id] = $true } }
 
+    # Apply filters (if any). After filter, also recompute the per-rarity stat line is overkill —
+    # just keep the totals reflecting the matched subset.
+    $filters = Parse-PokemonFilters $filterArgs
+    if ($filters.unknown.Count -gt 0) { Print "  $(Color '38;5;196' "Unknown filter(s):") $(Dim ($filters.unknown -join ', '))" }
+    $hadFilter = ($filters.types.Count + $filters.rarities.Count + $filters.flags.Count) -gt 0
+    if ($hadFilter) {
+        $rows = $rows | Where-Object { Match-PokemonFilter $_.poke $_.count $_.shiny_count ($teamSet.ContainsKey($_.id)) $filters }
+        $totalSpecies = @($rows).Count
+        $totalCopies  = ($rows | Measure-Object -Property count -Sum).Sum
+        $totalShinies = ($rows | Measure-Object -Property shiny_count -Sum).Sum
+    }
+
     Print ''
     Print (Bold "=== Bag ($totalSpecies species $DOT $totalCopies cards $DOT $totalShinies shiny) ===")
+    if ($hadFilter) { Print (Format-FilterHeader $filters) }
     Print ''
+    if ($totalSpecies -eq 0) { Print "  $(Dim '(no match)')"; Print ''; return }
     foreach ($r in $rows) {
         $p = $r.poke
         $glyph = Color $TypeColor[$p.type1] "$($TypeGlyph[$p.type1])"
@@ -2981,6 +3174,42 @@ function Show-Bag($state) {
     }
     Print ''
     Print "  $(Dim 'Bag = current copies. /gacha stats <id> for full base-stat bars; /gacha dex for ever-caught view.')"
+    Print "  $(Dim 'Filter examples: /gacha bag water | /gacha bag U+ shiny | /gacha bag fire dupes')"
+    Print ''
+}
+
+# PC Box: bag view minus team. Reuses Show-Bag with implicit 'not-team' filter.
+function Show-Box($state, $filterArgs = @()) {
+    Show-Bag $state (@('not-team') + $filterArgs)
+}
+
+# Pull history — last N entries newest-first. Default N=20, max = stored cap (50).
+function Show-History($state, [int]$n = 20) {
+    Print ''
+    Print (Bold "=== 抽卡紀錄 ===")
+    Print ''
+    if (-not $state.pull_history -or @($state.pull_history).Count -eq 0) {
+        Print "  $(Dim '尚無紀錄。/gacha pull 後就會開始累積。')"
+        Print ''
+        return
+    }
+    $h = @($state.pull_history)
+    # Stored oldest-first; reverse for newest-first display.
+    [array]::Reverse($h)
+    $h = $h | Select-Object -First $n
+    foreach ($e in $h) {
+        $p = $Dex[[string]$e.id]
+        $glyph = if ($p) { Color $TypeColor[$p.type1] "$($TypeGlyph[$p.type1])" } else { '?' }
+        $name = if ($e.shiny) { Gold $e.name_zh } else { Color '38;5;255' $e.name_zh }
+        $rarity = Color $RarityColor[$e.rarity] "[$($e.rarity)]"
+        $newTag = if ($e.new) { ' ' + (Color '1;38;5;226' 'NEW') } else { '' }
+        $shinyTag = if ($e.shiny) { ' ' + (Color '1;38;5;220' '✦') } else { '' }
+        # Compact timestamp: MM/dd HH:mm
+        $ts = try { ([DateTime]$e.when).ToString('MM/dd HH:mm') } catch { '?' }
+        Print "  $(Dim $ts)  $glyph #$('{0:D3}' -f [int]$e.id) $name $rarity$newTag$shinyTag"
+    }
+    Print ''
+    Print "  $(Dim "顯示最近 $($h.Count) 筆 (上限儲存 50)；/gacha history N 改變顯示筆數")"
     Print ''
 }
 
@@ -3021,6 +3250,9 @@ function Show-Help {
     Print "  /gacha title <slug>  equip an unlocked title (shown on trainer card)"
     Print "  /gacha frames        show all 6 trainer-card frame skins"
     Print "  /gacha frame <slug>  equip an unlocked frame skin"
+    Print "  /gacha box           bag minus team (PC storage view)"
+    Print "  /gacha compare A B   side-by-side stat comparison of two species"
+    Print "  /gacha history [N]   last N pulls (default 20, stored max 50)"
     Print "  /gacha dex           Pokedex grid (every species ever caught)"
     Print "  /gacha bag           current bag (copies you still hold)"
     Print "  /gacha album         show sprite art for every species in bag"
@@ -3108,6 +3340,20 @@ try {
         if (-not [int]::TryParse($Arg, [ref]$id)) { Print "Usage: stats <pokemon-id>"; break }
         Show-Stats $state $id
     }
+    'compare' {
+        $a = 0; $b = 0
+        if (-not [int]::TryParse($Arg, [ref]$a) -or -not [int]::TryParse($Arg2, [ref]$b)) {
+            Print "Usage: compare <id-A> <id-B>"; break
+        }
+        Show-Compare $state $a $b
+    }
+    'vs'      {
+        $a = 0; $b = 0
+        if (-not [int]::TryParse($Arg, [ref]$a) -or -not [int]::TryParse($Arg2, [ref]$b)) {
+            Print "Usage: vs <id-A> <id-B>"; break
+        }
+        Show-Compare $state $a $b
+    }
     'achievements' { Show-Achievements $state }
     'achv'    { Show-Achievements $state }
     'event'   { Show-Event }
@@ -3181,8 +3427,21 @@ try {
         if (-not [int]::TryParse($Arg, [ref]$g)) { Print "Usage: gym <1..8>"; break }
         Challenge-Gym $state $g
     }
-    'dex'     { Show-Dex $state }
-    'bag'     { Show-Bag $state }
+    'dex'     { Show-Dex $state @($Arg, $Arg2, $Arg3) }
+    'bag'     { Show-Bag $state @($Arg, $Arg2, $Arg3) }
+    'box'     { Show-Box $state @($Arg, $Arg2, $Arg3) }
+    'history' {
+        $n = 20
+        if (-not [string]::IsNullOrWhiteSpace($Arg)) {
+            [void][int]::TryParse($Arg, [ref]$n)
+        }
+        Show-History $state $n
+    }
+    'log'     {
+        $n = 20
+        if (-not [string]::IsNullOrWhiteSpace($Arg)) { [void][int]::TryParse($Arg, [ref]$n) }
+        Show-History $state $n
+    }
     'album'   { Show-Album $state }
     'gallery' { Show-Album $state }
     'help'    { Show-Help }
