@@ -195,9 +195,15 @@ if ($gachaState) {
                 }
                 if ($pool.Count -gt 0) {
                     $eid = $pool[(Get-Random -Maximum $pool.Count)]
+                    # Shiny is rolled at SPAWN (not capture) so the statusline can preview
+                    # the ✦ — at 1/50 it's "rare but achievable", ~50× the pull rate.
+                    # User opted for boosted rate to make encounter-shinies the main shiny
+                    # hunting channel (pulls stay at canonical 1/4096).
+                    $eShiny = ((Get-Random -Maximum 50) -eq 0)
                     $newEncounter = [ordered]@{
                         id            = [int]$eid
                         rarity        = [string]$eRarity
+                        shiny         = [bool]$eShiny
                         attempts_left = 3
                         spawned_at_ep = $nowEp
                     }
@@ -804,15 +810,17 @@ if ($gachaState -and $gachaState.encounter -and $gachaState.encounter.id -and [i
     $eid = [int]$gachaState.encounter.id
     $erty = [string]$gachaState.encounter.rarity
     $eatt = [int]$gachaState.encounter.attempts_left
+    $eshiny = [bool]$gachaState.encounter.shiny
     $einfo = Lookup-Poke $dex $eid
     if ($einfo) {
         $eType = $einfo.type1
         $eGlyph = if ($tGlyph.ContainsKey($eType)) { Color $tCol[$eType] "$($tGlyph[$eType])" } else { '?' }
-        $eName = $einfo.name_zh
-        # Color the WILD! tag by rarity so HR pops as legendary
-        $tagCol = if ($erty -eq 'HR') { '1;38;5;213' } elseif ($erty -eq 'R') { '1;38;5;220' } elseif ($erty -eq 'U') { '1;38;5;82' } else { '1;38;5;245' }
-        $wildText = if ($erty -eq 'HR') { 'LEGENDARY' } else { 'WILD' }
-        $encBanner = "  $(Color $tagCol "[$wildText !] ") $eGlyph #$('{0:D3}' -f $eid) $(Color '1;38;5;255' $eName) $(Dim "[$erty]")  $(Color '38;5;245' "$eatt attempts left")  $(Dim '/gacha catch')"
+        $eName = if ($eshiny) { Color '1;38;5;220' $einfo.name_zh } else { Color '1;38;5;255' $einfo.name_zh }
+        # Shiny upgrades the wild banner: SHINY > LEGENDARY > WILD.
+        $tagCol = if ($eshiny) { '1;38;5;220' } elseif ($erty -eq 'HR') { '1;38;5;213' } elseif ($erty -eq 'R') { '1;38;5;220' } elseif ($erty -eq 'U') { '1;38;5;82' } else { '1;38;5;245' }
+        $wildText = if ($eshiny) { 'SHINY!' } elseif ($erty -eq 'HR') { 'LEGENDARY' } else { 'WILD' }
+        $shinyTag = if ($eshiny) { ' ' + (Color '1;38;5;220' [string][char]0x2728) } else { '' }
+        $encBanner = "  $(Color $tagCol "[$wildText !] ") $eGlyph #$('{0:D3}' -f $eid) $eName$shinyTag $(Dim "[$erty]")  $(Color '38;5;245' "$eatt attempts left")  $(Dim '/gacha catch')"
     }
 }
 

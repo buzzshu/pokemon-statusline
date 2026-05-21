@@ -1108,7 +1108,14 @@ function Catch-Encounter($state) {
     $shiny = $false
     $attemptsLeftAfter = 0
     if ($caught) {
-        $shiny = Roll-Shiny
+        # Shiny was pre-rolled at spawn time by statusline.ps1 (boosted to 1/50 for
+        # encounters, vs 1/4096 in pull). Honor the pre-roll; only fall back to a
+        # fresh roll if the spawn predates the shiny field (legacy state).
+        $shiny = if ($state.encounter.PSObject.Properties.Name -contains 'shiny' -or ($state.encounter -is [hashtable] -and $state.encounter.Contains('shiny'))) {
+            [bool]$state.encounter.shiny
+        } else {
+            Roll-Shiny
+        }
         Add-Owned $state $id $shiny
         if ($shiny) { $state.stats.shinies_total = [int]$state.stats.shinies_total + 1 }
         $state.encounter = $null
