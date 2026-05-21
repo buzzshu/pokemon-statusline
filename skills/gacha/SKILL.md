@@ -64,9 +64,7 @@ Spawn the engine in a new Windows Terminal tab so the user sees the full output 
    }
    ```
 
-2b. **For `album`/`gallery`/`box`/`gym N`** (no easy counter to poll): fall back to a fixed sleep tuned to the command's runtime:
-   - `album`/`gallery`/`box`: 3000ms (just sprite scrolling, no state mutation)
-   - `gym N`: 35000ms (battle takes 20-30s with reveal animation)
+2b. **For `album`/`gallery`/`box`/`gym N`/`elite`/`champion`** (slow, no easy counter): **do NOT poll, do NOT use Monitor, do NOT sleep**. After Start-Process spawns the tab, immediately report one short line like "已在新 tab 開啟，動畫跑完看結果即可" and stop. The user reads the visual result in the wt tab. Polling these commands floods the chat with Monitor events and breaks operation flow — the user explicitly does not want that noise.
 
 3. Read the result from the shared state file and report inline (one or two short sentences) so the chat keeps context. The fields you care about live in `%USERPROFILE%\.claude\gacha-state.json`:
 
