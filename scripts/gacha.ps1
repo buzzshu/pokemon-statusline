@@ -1520,8 +1520,23 @@ function Remove-Team($state, [int]$id) {
     Print ''
 }
 
+# Convert a colored sprite to silhouette form: replace every non-black 24-bit
+# RGB color with a uniform dark gray, preserving black (=transparent) pixels.
+# Non-greedy negative lookahead skips (0,0,0) so the outline shape stays intact.
+function Silhouette-Sprite($lines) {
+    $out = @()
+    foreach ($l in $lines) {
+        $s = $l -replace '38;2;(?!0;0;0\b)\d+;\d+;\d+', '38;5;239'
+        $s = $s -replace '48;2;(?!0;0;0\b)\d+;\d+;\d+', '48;5;236'
+        $out += $s
+    }
+    return $out
+}
+
 function Show-Album($state, $opts = $null) {
-    # opts: @{ filterIds = @(int,...); title = 'Album' | 'Box'; emptyMsg = '...' }
+    # opts: @{ filterIds = @(int,...); title = '...'; emptyMsg = '...' }
+    # Without filterIds: dex mode — all 151 rendered, uncaught as silhouette.
+    # With filterIds (box / future): only those ids, no silhouettes.
     $allowSet = $null
     if ($opts -and $opts.filterIds) {
         $allowSet = @{}
@@ -1530,37 +1545,48 @@ function Show-Album($state, $opts = $null) {
     $title = if ($opts -and $opts.title) { $opts.title } else { 'Album' }
     $emptyMsg = if ($opts -and $opts.emptyMsg) { $opts.emptyMsg } else { 'No pokemon caught yet. Try /gacha pull.' }
 
-    $ownedIds = @()
+    # ownedSet — for dex mode, decides "colored vs silhouette" per id.
+    $ownedSet = @{}
     foreach ($k in @($state.owned.Keys)) {
-        if ([int]$state.owned[$k].count -ge 1) {
-            $id = [int]$k
-            if ($null -eq $allowSet -or $allowSet[$id]) { $ownedIds += $id }
-        }
+        if ([int]$state.owned[$k].count -ge 1) { $ownedSet[[int]$k] = $true }
     }
-    if ($ownedIds.Count -eq 0) {
-        Print ''
-        Print "  $emptyMsg"
-        Print ''
-        return
+    $caughtSet = @{}
+    foreach ($k in @($state.owned.Keys)) {
+        if ($null -ne $state.owned[$k].first_caught) { $caughtSet[[int]$k] = $true }
     }
-    $ownedIds = @($ownedIds | Sort-Object)
-    Print ''
-    Print (Bold "=== $title ($($ownedIds.Count)/151) ===")
-    Print ''
+
+    if ($null -ne $allowSet) {
+        $ids = @($allowSet.Keys | Sort-Object)
+        if ($ids.Count -eq 0) { Print ''; Print "  $emptyMsg"; Print ''; return }
+        Print ''
+        Print (Bold "=== $title ($($ids.Count)/151) ===")
+        Print ''
+    } else {
+        $ids = 1..151
+        $ownedCount = $ownedSet.Count
+        $caughtCount = $caughtSet.Count
+        Print ''
+        Print (Bold "=== $title (擁有 $ownedCount · 圖鑑 $caughtCount/151) ===")
+        Print "  $(Dim '彩色 = 仍持有，灰色輪廓 = 未捕獲')"
+        Print ''
+    }
 
     $perRow = 3
     $cellPad = 2   # spaces between sprite cells
-    for ($start = 0; $start -lt $ownedIds.Count; $start += $perRow) {
-        $end = [Math]::Min($start + $perRow - 1, $ownedIds.Count - 1)
-        $chunk = $ownedIds[$start..$end]
+    for ($start = 0; $start -lt $ids.Count; $start += $perRow) {
+        $end = [Math]::Min($start + $perRow - 1, $ids.Count - 1)
+        $chunk = @($ids[$start..$end])
 
-        # Load each sprite's lines + compute per-column widths
+        # Load each sprite's lines + compute per-column widths.
+        # If allowSet not set AND id is uncaught → render silhouette.
         $cellLines = @()
         $widths = @()
         $maxRows = 0
         foreach ($id in $chunk) {
             $path = Join-Path $ClaudeDir "sprites\regular\$([int]$id).txt"
-            $lines = if (Test-Path $path) { @(Get-Content $path -Encoding UTF8) } else { @("[no sprite #$id]") }
+            $rawLines = if (Test-Path $path) { @(Get-Content $path -Encoding UTF8) } else { @("[no sprite #$id]") }
+            $isUncaught = ($null -eq $allowSet) -and (-not $caughtSet[[int]$id])
+            $lines = if ($isUncaught) { Silhouette-Sprite $rawLines } else { $rawLines }
             $w = 0
             foreach ($l in $lines) {
                 $vw = Get-VisibleWidth $l
@@ -1582,25 +1608,34 @@ function Show-Album($state, $opts = $null) {
             Print $row
         }
 
-        # Caption row: glyph #NNN name [shiny ✨]
+        # Caption row: caught → glyph + name; uncaught → dim ???
         $captionRow = ''
         for ($j = 0; $j -lt $chunk.Count; $j++) {
             $id = [int]$chunk[$j]
             $p = $Dex[[string]$id]
-            $glyph = Color $TypeColor[$p.type1] "$($TypeGlyph[$p.type1])"
+            $isCaught = $caughtSet[$id]
             $isShiny = (Get-OwnedShinyCount $state $id) -gt 0
-            $nameTxt = if ($isShiny) { Gold $p.name_zh } else { Color '38;5;255' $p.name_zh }
-            $shinyTag = if ($isShiny) { ' ' + (Color '1;38;5;220' [string][char]0x2728) } else { '' }
-            $cnt = [int]$state.owned[[string]$id].count
-            $cntTag = if ($cnt -gt 1) { Dim " x$cnt" } else { '' }
-            $cell = " $glyph #$('{0:D3}' -f $id) $nameTxt$shinyTag$cntTag"
+            if ($isCaught) {
+                $glyph = Color $TypeColor[$p.type1] "$($TypeGlyph[$p.type1])"
+                $nameTxt = if ($isShiny) { Gold $p.name_zh } else { Color '38;5;255' $p.name_zh }
+                $shinyTag = if ($isShiny) { ' ' + (Color '1;38;5;220' [string][char]0x2728) } else { '' }
+                $cnt = [int]$state.owned[[string]$id].count
+                $cntTag = if ($cnt -gt 1) { Dim " x$cnt" } elseif ($cnt -eq 0) { Color '38;5;245' ' (released)' } else { '' }
+                $cell = " $glyph #$('{0:D3}' -f $id) $nameTxt$shinyTag$cntTag"
+            } else {
+                $cell = ' ' + (Color '38;5;239' "? #$('{0:D3}' -f $id) ???")
+            }
             $pad = ' ' * [Math]::Max(0, $widths[$j] - (Get-VisibleWidth $cell))
             $captionRow += $cell + $pad + (' ' * $cellPad)
         }
         Print $captionRow
         Print ''
     }
-    Print "  $(Dim 'Caught total:') $($ownedIds.Count)$(Dim '/151')"
+    if ($null -eq $allowSet) {
+        Print "  $(Dim '擁有:') $($ownedSet.Count) $(Dim '· 圖鑑:') $($caughtSet.Count)$(Dim '/151')"
+    } else {
+        Print "  $(Dim 'Showing:') $($ids.Count)$(Dim ' species')"
+    }
     Print ''
 }
 
