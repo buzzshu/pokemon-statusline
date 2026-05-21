@@ -268,14 +268,16 @@ $SignatureMoves = @{
 # independent copy of the glyph/color table — see CLAUDE.md "Sprite rendering +
 # visible-width math" note for the duplication convention.
 $GymLeaders = @(
-    @{ idx=1; city='灰色道館'; leader_name='小剛';   poke_id=95;  level=14; badge='灰色徽章' }    # Brock - Onix
-    @{ idx=2; city='華藍道館'; leader_name='小霞';   poke_id=121; level=21; badge='藍色徽章' }    # Misty - Starmie
-    @{ idx=3; city='枯葉道館'; leader_name='馬志士'; poke_id=26;  level=24; badge='雷光徽章' }    # Surge - Raichu
-    @{ idx=4; city='玉虹道館'; leader_name='莉佳';   poke_id=45;  level=29; badge='彩虹徽章' }    # Erika - Vileplume
-    @{ idx=5; city='金黃道館'; leader_name='沙奈';   poke_id=65;  level=43; badge='金色徽章' }    # Sabrina - Alakazam
-    @{ idx=6; city='淺紅道館'; leader_name='阿桔';   poke_id=110; level=43; badge='沼澤徽章' }    # Koga - Weezing
-    @{ idx=7; city='紅蓮道館'; leader_name='夏伯';   poke_id=59;  level=47; badge='火紅徽章' }    # Blaine - Arcanine
-    @{ idx=8; city='常磐道館'; leader_name='阪木';   poke_id=112; level=50; badge='地球徽章' }    # Giovanni - Rhydon
+    # Canonical RBY gym leader teams. poke_ids[] / levels[] mirrors $EliteFour schema
+    # so Challenge-Gym can use Resolve-Battle directly (multi-mon turn-by-turn battle).
+    @{ idx=1; city='灰色道館'; leader_name='小剛';   poke_ids=@(74, 95);                  levels=@(12, 14);                badge='灰色徽章' }    # Brock — Geodude/Onix
+    @{ idx=2; city='華藍道館'; leader_name='小霞';   poke_ids=@(120, 121);                levels=@(18, 21);                badge='藍色徽章' }    # Misty — Staryu/Starmie
+    @{ idx=3; city='枯葉道館'; leader_name='馬志士'; poke_ids=@(100, 25, 26);             levels=@(21, 18, 24);            badge='雷光徽章' }    # Surge — Voltorb/Pikachu/Raichu
+    @{ idx=4; city='玉虹道館'; leader_name='莉佳';   poke_ids=@(71, 114, 45);             levels=@(29, 24, 29);            badge='彩虹徽章' }    # Erika — Victreebel/Tangela/Vileplume
+    @{ idx=5; city='金黃道館'; leader_name='沙奈';   poke_ids=@(64, 122, 49, 65);         levels=@(38, 37, 38, 43);        badge='金色徽章' }    # Sabrina — Kadabra/Mr.Mime/Venomoth/Alakazam
+    @{ idx=6; city='淺紅道館'; leader_name='阿桔';   poke_ids=@(109, 89, 109, 110);       levels=@(37, 39, 37, 43);        badge='沼澤徽章' }    # Koga — Koffing/Muk/Koffing/Weezing
+    @{ idx=7; city='紅蓮道館'; leader_name='夏伯';   poke_ids=@(58, 77, 78, 59);          levels=@(42, 40, 42, 47);        badge='火紅徽章' }    # Blaine — Growlithe/Ponyta/Rapidash/Arcanine
+    @{ idx=8; city='常磐道館'; leader_name='阪木';   poke_ids=@(111, 51, 31, 34, 112);    levels=@(45, 42, 44, 45, 50);    badge='地球徽章' }    # Giovanni — Rhyhorn/Dugtrio/Nidoqueen/Nidoking/Rhydon
 )
 
 # --- Elite Four + Champion (gated behind all 8 gym badges) ---
@@ -2043,13 +2045,23 @@ function Show-Gyms($state) {
     Print ''
     foreach ($gym in $GymLeaders) {
         $key = [int]$gym.idx
-        $p = $Dex[[string]$gym.poke_id]
-        $glyph = if ($p) { Color $TypeColor[$p.type1] "$($TypeGlyph[$p.type1])" } else { '?' }
-        $pname = if ($p) { $p.name_zh } else { "#$($gym.poke_id)" }
         $status = if ($beaten[$key]) { Color '1;38;5;82' '[CLEAR]' } else { Color '38;5;245' '[ open ]' }
         $badge = if ($beaten[$key]) { Color '1;38;5;220' "+$($gym.badge)" } else { Dim "(尚未拿到 $($gym.badge))" }
-        Print "  $status Gym #$($gym.idx) $($gym.city) (leader $($gym.leader_name))"
-        Print "         挑戰：$glyph #$('{0:D3}' -f $gym.poke_id) $(Color '38;5;255' $pname) LV. $($gym.level)   $badge"
+        $aceLvl = ($gym.levels | Measure-Object -Maximum).Maximum
+        Print "  $status Gym #$($gym.idx) $($gym.city) (leader $($gym.leader_name))  $badge"
+        # Build a compact per-mon line: glyph #id name LV.x  ·  ...
+        $bits = @()
+        for ($k = 0; $k -lt $gym.poke_ids.Count; $k++) {
+            $pkId = [int]$gym.poke_ids[$k]
+            $plv = [int]$gym.levels[$k]
+            $p = $Dex[[string]$pkId]
+            $glyph = if ($p) { Color $TypeColor[$p.type1] "$($TypeGlyph[$p.type1])" } else { '?' }
+            $pname = if ($p) { $p.name_zh } else { "#$pkId" }
+            $isAce = ($plv -eq $aceLvl)
+            $nameCol = if ($isAce) { '1;38;5;220' } else { '38;5;255' }
+            $bits += "$glyph $(Color $nameCol $pname)$(Dim " L$plv")"
+        }
+        Print "         $($bits -join '  ')"
     }
     Print ''
     Print "  $(Dim '/gacha gym <N> 挑戰 (1-8); buddy.level + team 一起出戰; gym leader 等級越來越高.')"
@@ -2464,11 +2476,15 @@ function Challenge-Gym($state, [int]$gymIdx) {
         Print (Color '38;5;196' "Team contains no valid pokemon.")
         return
     }
-    $leaderTeam = @((Build-Combatant ([int]$gym.poke_id) ([int]$gym.level) $false))
+    $leaderTeam = @()
+    for ($k = 0; $k -lt $gym.poke_ids.Count; $k++) {
+        $leaderTeam += , (Build-Combatant ([int]$gym.poke_ids[$k]) ([int]$gym.levels[$k]) $false)
+    }
+    $aceLvl = ($gym.levels | Measure-Object -Maximum).Maximum
 
     Print ''
     Print (Color '1;38;5;220' "你挑戰了 $($gym.city) (leader $($gym.leader_name))！")
-    Print "  $(Dim '對手:') $(Format-Combatant $leaderTeam[0])  HP $($leaderTeam[0].hp_max)"
+    Print "  $(Dim '對手隊伍:') $($gym.poke_ids.Count) 隻 (LV $($gym.levels -join '/'))"
     Print ''
     Start-Sleep -Milliseconds 800
 
@@ -2478,9 +2494,9 @@ function Challenge-Gym($state, [int]$gymIdx) {
 
     if ($result -eq 'A') {
         Print (Color '1;38;5;82' "★ 勝利！你打贏 $($gym.leader_name)，獲得 $($gym.badge)！")
-        $coinReward = $gym.level * 2
-        $leadExp = $gym.level
-        $sideExp = [int][Math]::Floor($gym.level / 4)
+        $coinReward = $aceLvl * 2
+        $leadExp = $aceLvl
+        $sideExp = [int][Math]::Floor($aceLvl / 4)
         $state.coins = [int]$state.coins + $coinReward
         # Team[0] (buddy) gets full reward; other slots get the side-exp ONLY
         # if they survived (hp_cur > 0 in the userTeam combatant we built).
@@ -2505,7 +2521,7 @@ function Challenge-Gym($state, [int]$gymIdx) {
         }
         Print ""
         $sideTag = if ($sideAwarded -gt 0) { "  +$sideExp exp × $sideAwarded 倖存隊員" } else { '' }
-        Print (Dim "  獎勵：+$coinReward coins (LV. * 2)  ·  +$leadExp exp to buddy$sideTag  ·  streak $($state.battle_streak_current) (best $($state.battle_streak_best))")
+        Print (Dim "  獎勵：+$coinReward coins (ace LV × 2)  ·  +$leadExp exp to buddy$sideTag  ·  streak $($state.battle_streak_current) (best $($state.battle_streak_best))")
         Print (Dim "  進度：$($state.gyms_beaten.Count)/8 道館攻略")
     } elseif ($result -eq 'B') {
         Print (Color '1;38;5;196' "✕ 戰敗。隊伍全滅，下次再來。")
