@@ -1866,15 +1866,31 @@ function Build-Combatant([int]$id, [int]$lvl, [bool]$shiny = $false) {
     $key = [string]$id
     $p = $Dex[$key]
     $s = if ($Stats.ContainsKey($key)) { $Stats[$key] } else { @{ hp=100; atk=80; def=80; spa=80; spd=80; spe=80 } }
-    # HP scales mildly with level so battles at high levels don't end instantly.
+    # Canonical Gen 1 stat scaling (simplified — no IV / Stat Exp):
+    #   HP    = (Base × 2) × LV / 100 + LV + 10
+    #   other = (Base × 2) × LV / 100 + 5
+    # LV 1 pokemon end up with ~6 in each non-HP stat (intentionally weak per
+    # canonical Pokemon balance), LV 50 ≈ base value, LV 100 ≈ base × 2 + 5.
+    # Previously only HP scaled — base stats were used raw, which made LV 1
+    # team members artificially strong. Switching to canonical makes training
+    # actually matter; damage formula's (2L+10) factor still applies on top.
     $hpMax = [int]([Math]::Floor((2.0 * [int]$s.hp + 31) * $lvl / 100.0) + $lvl + 10)
+    $scaled = @{
+        hp  = [int]$s.hp
+        atk = [int]([Math]::Floor(2.0 * [int]$s.atk * $lvl / 100.0) + 5)
+        def = [int]([Math]::Floor(2.0 * [int]$s.def * $lvl / 100.0) + 5)
+        spa = [int]([Math]::Floor(2.0 * [int]$s.spa * $lvl / 100.0) + 5)
+        spd = [int]([Math]::Floor(2.0 * [int]$s.spd * $lvl / 100.0) + 5)
+        spe = [int]([Math]::Floor(2.0 * [int]$s.spe * $lvl / 100.0) + 5)
+        bst = [int]$s.bst
+    }
     return @{
         id        = $id
         name_zh   = $p.name_zh
         name_en   = $p.name_en
         type1     = $p.type1
         type2     = $p.type2
-        stats     = $s
+        stats     = $scaled
         glyph     = "$($TypeGlyph[$p.type1])"
         glyphCol  = $TypeColor[$p.type1]
         level     = $lvl
