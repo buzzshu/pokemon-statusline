@@ -1,7 +1,11 @@
-Pokemon sprite ANSI files in `regular/` are vendored from:
+Pokemon sprite ANSI files in `regular/` and `shiny/` are vendored from:
 
   https://gitlab.com/phoneybadger/pokemon-colorscripts
-  colorscripts/small/regular/<name> (renamed to <id>.txt)
+  colorscripts/small/{regular,shiny}/<name> (renamed to <id>.txt)
+
+  Edge cases in upstream filename → dex id mapping:
+    nidoran-f → 29   nidoran-m → 32
+    farfetchd → 83   mr-mime   → 122
 
 License (per upstream LICENSE.txt):
 

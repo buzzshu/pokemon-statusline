@@ -381,19 +381,23 @@ function Lookup-Poke($dex, [int]$id) {
 # sprite/name lookups; per-slot exp isn't used here — leader EXP bar reads
 # gachaState.buddy.exp, which Sync-Buddy keeps mirrored to team[0].
 $teamAll = @()
+$teamAllShiny = @()   # parallel bool array; sprite loader picks shiny/<id>.txt when true
 if ($gachaState -and $gachaState.team) {
     foreach ($x in $gachaState.team) {
         $xid = if ($null -ne $x.id) { [int]$x.id } else { [int]$x }   # tolerate legacy int rows
         $teamAll += $xid
+        $teamAllShiny += [bool]$x.shiny
     }
 } elseif ($gachaState -and $gachaState.buddy -and $gachaState.buddy.id) {
     $teamAll = @([int]$gachaState.buddy.id)
+    $teamAllShiny = @([bool]$gachaState.buddy.shiny)
 }
 $visibleSprites = @()
+$visibleShiny = @()
 $overflowCompanions = @()
 if ($teamAll.Count -gt 0) {
     $cap = [Math]::Min(3, $teamAll.Count)
-    for ($i = 0; $i -lt $cap; $i++) { $visibleSprites += [int]$teamAll[$i] }
+    for ($i = 0; $i -lt $cap; $i++) { $visibleSprites += [int]$teamAll[$i]; $visibleShiny += [bool]$teamAllShiny[$i] }
     if ($teamAll.Count -gt 3) {
         for ($i = 3; $i -lt $teamAll.Count; $i++) { $overflowCompanions += [int]$teamAll[$i] }
     }
@@ -588,8 +592,12 @@ $rightCol = @()
 $widths = @()
 if ($visibleSprites.Count -ge 1) {
     $sprites = @()
-    foreach ($id in $visibleSprites) {
-        $path = Join-Path $ClaudeDir "sprites\regular\$id.txt"
+    for ($si = 0; $si -lt $visibleSprites.Count; $si++) {
+        $id = [int]$visibleSprites[$si]
+        $isShiny = [bool]$visibleShiny[$si]
+        $shinyPath = Join-Path $ClaudeDir "sprites\shiny\$id.txt"
+        $regPath = Join-Path $ClaudeDir "sprites\regular\$id.txt"
+        $path = if ($isShiny -and (Test-Path $shinyPath)) { $shinyPath } else { $regPath }
         if (Test-Path $path) { $sprites += , @(Get-Content $path -Encoding UTF8) }
     }
     if ($sprites.Count -ge 1) {

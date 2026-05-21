@@ -54,7 +54,7 @@ $spriteSrc = Join-Path $src 'sprites'
 $spriteDst = Join-Path $Target 'sprites'
 if (Test-Path $spriteDst) { Remove-Item -Path $spriteDst -Recurse -Force }
 Copy-Item -Path $spriteSrc -Destination $spriteDst -Recurse -Force
-Write-Host "  copied: sprites/ (151 files + NOTICE)"
+Write-Host "  copied: sprites/ (regular + shiny, 302 files + NOTICE)"
 
 # State file: don't overwrite if it already exists (preserves user progress)
 $stateDst = Join-Path $Target 'gacha-state.json'
