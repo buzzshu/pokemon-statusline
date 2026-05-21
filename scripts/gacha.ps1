@@ -1520,20 +1520,32 @@ function Remove-Team($state, [int]$id) {
     Print ''
 }
 
-function Show-Album($state) {
+function Show-Album($state, $opts = $null) {
+    # opts: @{ filterIds = @(int,...); title = 'Album' | 'Box'; emptyMsg = '...' }
+    $allowSet = $null
+    if ($opts -and $opts.filterIds) {
+        $allowSet = @{}
+        foreach ($i in $opts.filterIds) { $allowSet[[int]$i] = $true }
+    }
+    $title = if ($opts -and $opts.title) { $opts.title } else { 'Album' }
+    $emptyMsg = if ($opts -and $opts.emptyMsg) { $opts.emptyMsg } else { 'No pokemon caught yet. Try /gacha pull.' }
+
     $ownedIds = @()
     foreach ($k in @($state.owned.Keys)) {
-        if ([int]$state.owned[$k].count -ge 1) { $ownedIds += [int]$k }
+        if ([int]$state.owned[$k].count -ge 1) {
+            $id = [int]$k
+            if ($null -eq $allowSet -or $allowSet[$id]) { $ownedIds += $id }
+        }
     }
     if ($ownedIds.Count -eq 0) {
         Print ''
-        Print "  No pokemon caught yet. Try /gacha pull."
+        Print "  $emptyMsg"
         Print ''
         return
     }
     $ownedIds = @($ownedIds | Sort-Object)
     Print ''
-    Print (Bold "=== Album ($($ownedIds.Count)/151) ===")
+    Print (Bold "=== $title ($($ownedIds.Count)/151) ===")
     Print ''
 
     $perRow = 3
@@ -3178,9 +3190,37 @@ function Show-Bag($state, $filterArgs = @()) {
     Print ''
 }
 
-# PC Box: bag view minus team. Reuses Show-Bag with implicit 'not-team' filter.
+# PC Box: album-style sprite grid for everything you own but DON'T have in team.
+# Renders via Show-Album with a not-team id allow-list. Spawned in a new wt tab
+# (see skill spec) because the sprite block exceeds CC's tool-result preview.
 function Show-Box($state, $filterArgs = @()) {
-    Show-Bag $state (@('not-team') + $filterArgs)
+    # Compute team-id set so we can filter it out
+    $teamSet = @{}
+    if ($state.team) { foreach ($t in $state.team) { $teamSet[[int]$t.id] = $true } }
+    $notTeamIds = @()
+    foreach ($k in @($state.owned.Keys)) {
+        $id = [int]$k
+        if ([int]$state.owned[$k].count -ge 1 -and -not $teamSet[$id]) { $notTeamIds += $id }
+    }
+    # Honor type/rarity/flag filters too (apart from implicit not-team)
+    $filters = Parse-PokemonFilters $filterArgs
+    if ($filters.unknown.Count -gt 0) { Print "  $(Color '38;5;196' "Unknown filter(s):") $(Dim ($filters.unknown -join ', '))" }
+    $hadFilter = ($filters.types.Count + $filters.rarities.Count + $filters.flags.Count) -gt 0
+    if ($hadFilter) {
+        $kept = @()
+        foreach ($id in $notTeamIds) {
+            $p = $Dex[[string]$id]
+            $c = [int]$state.owned[[string]$id].count
+            $sc = [int]$state.owned[[string]$id].shiny_count
+            if (Match-PokemonFilter $p $c $sc $false $filters) { $kept += $id }
+        }
+        $notTeamIds = $kept
+    }
+    Show-Album $state @{ filterIds = $notTeamIds; title = 'PC Box'; emptyMsg = 'PC Box 是空的 (所有寶可夢都在 team 裡，或 bag 是空的)。' }
+    if ($hadFilter) {
+        Print "  $(Format-FilterHeader $filters)"
+        Print ''
+    }
 }
 
 # Pull history — last N entries newest-first. Default N=20, max = stored cap (50).

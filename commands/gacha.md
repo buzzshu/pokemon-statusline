@@ -11,7 +11,7 @@ The engine lives globally at `%USERPROFILE%\.claude\scripts\gacha.ps1` and reads
 
 Branch on what `$ARGUMENTS` starts with:
 
-### A. New-tab class (`pull`, `pulls <N>`, `trade`, `catch`, `evolve <ID>`, `album`, `gallery`, `gym <N>`) → open a new Windows Terminal tab
+### A. New-tab class (`pull`, `pulls <N>`, `trade`, `catch`, `evolve <ID>`, `album`, `gallery`, `box`, `gym <N>`) → open a new Windows Terminal tab
 
 All commands that **acquire / transform pokemon** spawn a tab so the reveal animation plays:
 - `pull` / `pulls N` — Claude Code buffers stdout so the 90ms-per-line sprite reveal is invisible inline.
@@ -19,6 +19,7 @@ All commands that **acquire / transform pokemon** spawn a tab so the reveal anim
 - `catch` — wild encounter resolution: shake animation + sprite reveal on GOTCHA.
 - `evolve <ID>` — Evolving... → sprite of the evolved form drops line-by-line.
 - `album` / `gallery` — 86+ lines of sprite art exceeds Claude Code's tool result preview.
+- `box` — PC storage view (sprite grid of all owned pokemon not in team).
 - `gym N` — turn-by-turn battle animation, ~20-30s per fight.
 
 Spawn the engine in a new Windows Terminal tab so the user sees the full output live.
@@ -62,8 +63,8 @@ Spawn the engine in a new Windows Terminal tab so the user sees the full output 
    }
    ```
 
-2b. **For `album`/`gallery`/`gym N`** (no easy counter to poll): fall back to a fixed sleep tuned to the command's runtime:
-   - `album`/`gallery`: 3000ms (just sprite scrolling, no state mutation)
+2b. **For `album`/`gallery`/`box`/`gym N`** (no easy counter to poll): fall back to a fixed sleep tuned to the command's runtime:
+   - `album`/`gallery`/`box`: 3000ms (just sprite scrolling, no state mutation)
    - `gym N`: 35000ms (battle takes 20-30s with reveal animation)
 
 3. Read the result from the shared state file and report inline (one or two short sentences) so the chat keeps context. The fields you care about live in `%USERPROFILE%\.claude\gacha-state.json`:
@@ -80,7 +81,7 @@ Spawn the engine in a new Windows Terminal tab so the user sees the full output 
    - HR or shiny pulled → small celebration line.
    - `Not enough coins` will surface in the tab; mirror it inline so the user notices without switching focus.
 
-### B. Everything else (`status`, `buddy <ID>`, `team ...`, `dex`, `help`, `bag`, `box`, `items`, `shop`, `buy`, `use`, `moves`, `rename`, `daily`, `trainer`, `gyms`, `elite`, `champion`, `badges`, `theme`, `stats`, `achievements`, `event`, `titles`, `title`, `frames`, `frame`, `history`, `compare`) → run inline
+### B. Everything else (`status`, `buddy <ID>`, `team ...`, `dex`, `help`, `bag`, `items`, `shop`, `buy`, `use`, `moves`, `rename`, `daily`, `trainer`, `gyms`, `elite`, `champion`, `badges`, `theme`, `stats`, `achievements`, `event`, `titles`, `title`, `frames`, `frame`, `history`, `compare`) → run inline
 
 These don't have an animation — they're one-shot prints. Just invoke the engine via the PowerShell tool:
 
