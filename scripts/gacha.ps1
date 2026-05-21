@@ -2922,7 +2922,7 @@ function Evolve-Pokemon($state, [int]$id) {
     $g1 = Color $TypeColor[$poke.type1] "$($TypeGlyph[$poke.type1])"
     $g2 = Color $TypeColor[$next.type1] "$($TypeGlyph[$next.type1])"
     $shinyTag = if ($hadShiny) { Gold ' *shiny preserved*' } else { '' }
-    $expTag = "$(Dim "(slot $($bestIdx + 1), kept exp $([int]$slot.exp) → LV. $(Get-Level [int]$slot.exp))")"
+    $expTag = "$(Dim "(slot $($bestIdx + 1), kept exp $([int]$slot.exp) → LV. $(Get-Level ([int]$slot.exp)))")"
     Print ''
     Print (Bold "=== Evolving... ===")
     Print "  $g1 $($poke.name_zh) (#$id) $ARROW ???"
